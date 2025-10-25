@@ -1,0 +1,9 @@
+# Build directory
+build/
+
+# Binary files
+mping
+
+# IDE files
+*.swp
+*.swo
