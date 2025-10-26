@@ -64,8 +64,7 @@ bool Database::createIPTable(const std::string& ip) {
                          << "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                          << "delay INTEGER,"
                          << "success BOOLEAN,"
-                         << "timestamp TEXT,"
-                         << "created_time TEXT DEFAULT CURRENT_TIMESTAMP"
+                         << "timestamp TEXT"
                          << ");";
     
     std::string createTableSQL = createTableSQLStream.str();
