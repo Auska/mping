@@ -53,6 +53,12 @@ int main(int argc, char* argv[]) {
     std::string databasePath = "ping_monitor.db";  // 默认数据库路径
     bool silentMode = false;  // 默认不启用静默模式
     
+    // 如果没有提供任何参数，打印帮助信息并退出
+    if (argc == 1) {
+        printUsage(argv[0]);
+        return 0;
+    }
+    
     // 定义长选项
     const struct option long_options[] = {
         {"help", no_argument, nullptr, 'h'},
