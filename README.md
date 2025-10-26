@@ -21,10 +21,10 @@ mping is a command-line tool for checking the connectivity of multiple hosts sim
 ### Options
 
 - `-h`, `--help`: Show help message
-- `-d`, `--database`: Enable database logging (default: enabled)
+- `-d`, `--database`: Enable database logging and specify database path
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
-- `-q`, `--query`: Query statistics for a specific IP address
-- `-c`, `--consecutive-failures [n]`: Query hosts with n consecutive failures (default: 3)
+- `-q`, `--query`: Query statistics for a specific IP address (requires -d)
+- `-c`, `--consecutive-failures [n]`: Query hosts with n consecutive failures (requires -d)
 
 ### Default behavior
 
@@ -61,20 +61,23 @@ make
 ## Example
 
 ```bash
-# Ping all hosts in ip.txt
-./mping
+# Ping all hosts in ip.txt with database logging
+./mping -d ping_monitor.db
 
 # Query statistics for a specific IP
-./mping -q 10.224.1.11
+./mping -d ping_monitor.db -q 10.224.1.11
 
 # Query hosts with 3 consecutive failures
-./mping -c
+./mping -d ping_monitor.db -c
 
 # Query hosts with 5 consecutive failures
-./mping -c 5
+./mping -d ping_monitor.db -c 5
+
+# Use a different database path
+./mping -d /path/to/mydb.db -c
 
 # Use a different input file
-./mping -f my_hosts.txt
+./mping -d ping_monitor.db -f my_hosts.txt
 ```
 
 ## Database Schema

@@ -6,10 +6,10 @@ void printUsage(const char* programName) {
     std::cout << "Usage: " << programName << " [options] [filename]\n";
     std::cout << "Options:\n";
     std::cout << "  -h, --help\t\tShow this help message\n";
-    std::cout << "  -d, --database\tEnable database logging (default: enabled)\n";
+    std::cout << "  -d, --database\tEnable database logging and specify database path\n";
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
-    std::cout << "  -q, --query\t\tQuery statistics for a specific IP address\n";
-    std::cout << "  -c, --consecutive-failures [n]\tQuery hosts with n consecutive failures (default: 3)\n";
+    std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
+    std::cout << "  -c, --consecutive-failures [n]\tQuery hosts with n consecutive failures (requires -d)\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
 }

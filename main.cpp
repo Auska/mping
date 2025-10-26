@@ -49,12 +49,13 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
 
 int main(int argc, char* argv[]) {
     std::string filename = "ip.txt";
-    bool enableDatabase = true;  // 默认启用数据库
+    bool enableDatabase = false;  // 默认不启用数据库
+    std::string databasePath = "ping_monitor.db";  // 默认数据库路径
     
     // 定义长选项
     const struct option long_options[] = {
         {"help", no_argument, nullptr, 'h'},
-        {"database", no_argument, nullptr, 'd'},
+        {"database", required_argument, nullptr, 'd'},
         {"file", required_argument, nullptr, 'f'},
         {"query", required_argument, nullptr, 'q'},
         {"consecutive-failures", optional_argument, nullptr, 'c'},
@@ -65,13 +66,14 @@ int main(int argc, char* argv[]) {
     int opt;
     std::string queryIP = "";
     int consecutiveFailures = -1;  // -1表示不查询连续失败
-    while ((opt = getopt_long(argc, argv, "hdf:q:c::", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c::", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
                 return 0;
             case 'd':
                 enableDatabase = true;
+                databasePath = optarg;
                 break;
             case 'f':
                 filename = optarg;
@@ -97,7 +99,12 @@ int main(int argc, char* argv[]) {
     
     // 如果提供了查询IP，则只显示查询结果，不执行ping操作
     if (!queryIP.empty()) {
-        Database db("ping_monitor.db");
+        if (!enableDatabase) {
+            std::cerr << "Database must be enabled to query statistics. Use -d option to specify database path.\n";
+            return 1;
+        }
+        
+        Database db(databasePath);
         if (!db.initialize()) {
             std::cerr << "Failed to initialize database" << std::endl;
             return 1;
@@ -109,7 +116,12 @@ int main(int argc, char* argv[]) {
     
     // 如果请求查询连续失败的主机，则只显示查询结果，不执行ping操作
     if (consecutiveFailures >= 0) {
-        Database db("ping_monitor.db");
+        if (!enableDatabase) {
+            std::cerr << "Database must be enabled to query consecutive failures. Use -d option to specify database path.\n";
+            return 1;
+        }
+        
+        Database db(databasePath);
         if (!db.initialize()) {
             std::cerr << "Failed to initialize database" << std::endl;
             return 1;
@@ -157,7 +169,7 @@ int main(int argc, char* argv[]) {
     
     // 等待所有任务完成并收集结果
     // 初始化数据库
-    Database db("ping_monitor.db");
+    Database db(databasePath);
     if (enableDatabase) {
         if (!db.initialize()) {
             std::cerr << "Failed to initialize database" << std::endl;
