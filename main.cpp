@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     
     // 创建ping管理器并执行ping操作
     PingManager pingManager;
-    std::vector<std::tuple<std::string, std::string, bool, short, std::string>> allResults = pingManager.performPing(hosts);
+    std::vector<std::tuple<std::string, std::string, bool, short, std::string>> allResults = pingManager.performPing(hosts, config.pingCount);
     
     // 初始化数据库管理器
     DatabaseManager db(config.databasePath);

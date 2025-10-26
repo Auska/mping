@@ -15,6 +15,7 @@ public:
         std::string queryIP = "";
         int consecutiveFailures = -1;  // -1表示不查询连续失败
         int cleanupDays = -1;  // -1表示不执行清理
+        int pingCount = 3;  // 默认发送3个包
     };
 
 private:

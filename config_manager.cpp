@@ -20,15 +20,20 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         {"consecutive-failures", required_argument, nullptr, 'c'},
         {"silent", no_argument, nullptr, 's'},
         {"cleanup", optional_argument, nullptr, 'C'},
+        {"count", required_argument, nullptr, 'n'},
+        {"version", no_argument, nullptr, 'v'},
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::n:v", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
+                return false;
+            case 'v':
+                std::cout << "mping version 1.0.0\n";
                 return false;
             case 'd':
                 config.enableDatabase = true;
@@ -57,6 +62,18 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.enableDatabase = true;  // 清理功能需要启用数据库
                 config.cleanupDays = (optarg) ? std::stoi(optarg) : 30;
                 break;
+            case 'n':
+                try {
+                    config.pingCount = std::stoi(optarg);
+                    if (config.pingCount <= 0) {
+                        std::cerr << "Ping count must be a positive integer." << std::endl;
+                        return false;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Invalid value for ping count: " << optarg << std::endl;
+                    return false;
+                }
+                break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
                 return false;
@@ -80,12 +97,14 @@ void ConfigManager::printUsage(const char* programName) {
     std::cout << "Usage: " << programName << " [options] [filename]\n";
     std::cout << "Options:\n";
     std::cout << "  -h, --help\t\tShow this help message\n";
+    std::cout << "  -v, --version\t\tShow version information\n";
     std::cout << "  -d, --database\tEnable database logging and specify database path\n";
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
     std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
     std::cout << "  -c, --consecutive-failures <n>\tQuery hosts with n consecutive failures (requires -d)\n";
     std::cout << "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)\n";
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
+    std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
 }
