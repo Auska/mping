@@ -32,7 +32,9 @@ bool Database::initialize() {
     const char* createHostsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS hosts (
             ip TEXT PRIMARY KEY,
-            hostname TEXT
+            hostname TEXT,
+            created_time TEXT DEFAULT CURRENT_TIMESTAMP,
+            last_seen TEXT
         );
     )";
     
@@ -62,8 +64,33 @@ bool Database::createIPTable(const std::string& ip) {
                          << "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                          << "delay INTEGER,"
                          << "success BOOLEAN,"
-                         << "timestamp TEXT"
+                         << "timestamp TEXT,"
+                         << "created_time TEXT DEFAULT CURRENT_TIMESTAMP"
                          << ");";
+    
+    std::string createTableSQL = createTableSQLStream.str();
+    
+    char* errMsg = 0;
+    int rc = sqlite3_exec(db, createTableSQL.c_str(), 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error creating table for IP " << ip << ": " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
+    
+    // 为timestamp列创建索引以提高查询性能
+    std::ostringstream createIndexSQLStream;
+    createIndexSQLStream << "CREATE INDEX IF NOT EXISTS idx_" << tableName << "_timestamp "
+                         << "ON " << tableName << " (timestamp);";
+    
+    std::string createIndexSQL = createIndexSQLStream.str();
+    
+    rc = sqlite3_exec(db, createIndexSQL.c_str(), 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error creating index for IP " << ip << ": " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+        return false;
+    }
     
     std::string createTableSQL = createTableSQLStream.str();
     
@@ -91,8 +118,11 @@ bool Database::insertPingResult(const std::string& ip, const std::string& hostna
     
     // 在hosts表中插入或更新IP与主机名的映射关系
     const char* upsertHostSQL = R"(
-        INSERT OR REPLACE INTO hosts (ip, hostname)
-        VALUES (?, ?);
+        INSERT INTO hosts (ip, hostname, last_seen)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(ip) DO UPDATE SET
+        hostname = excluded.hostname,
+        last_seen = excluded.last_seen;
     )";
     
     sqlite3_stmt* hostStmt;
