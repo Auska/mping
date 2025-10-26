@@ -13,7 +13,7 @@ endif()
 find_package(SQLite3 REQUIRED)
 
 # Add executable
-add_executable(mping main.cpp print_results.cpp db.cpp)
+add_executable(mping main.cpp print_results.cpp db.cpp utils.cpp ping.cpp)
 
 # Link pthread and SQLite3 libraries
 find_package(Threads REQUIRED)
