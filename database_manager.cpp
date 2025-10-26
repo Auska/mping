@@ -1,4 +1,4 @@
-#include "db.h"
+#include "database_manager.h"
 #include <iostream>
 #include <sqlite3.h>
 #include <sstream>
@@ -6,23 +6,23 @@
 #include <cctype>
 #include <iomanip>
 
-Database::Database(const std::string& path) : dbPath(path), db(nullptr) {}
+DatabaseManager::DatabaseManager(const std::string& path) : dbPath(path), db(nullptr) {}
 
-Database::~Database() {
+DatabaseManager::~DatabaseManager() {
     if (db) {
         sqlite3_close(db);
     }
 }
 
 // 辅助函数：将IP地址转换为有效的表名
-std::string Database::ipToTableName(const std::string& ip) {
+std::string DatabaseManager::ipToTableName(const std::string& ip) {
     std::string tableName = "ip_" + ip;
     // 将点号替换为下划线，确保表名有效
     std::replace(tableName.begin(), tableName.end(), '.', '_');
     return tableName;
 }
 
-bool Database::initialize() {
+bool DatabaseManager::initialize() {
     int rc = sqlite3_open(dbPath.c_str(), &db);
     if (rc) {
         std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
@@ -51,7 +51,7 @@ bool Database::initialize() {
 }
 
 // 为特定IP地址创建表
-bool Database::createIPTable(const std::string& ip) {
+bool DatabaseManager::createIPTable(const std::string& ip) {
     if (!db) {
         std::cerr << "Database not initialized" << std::endl;
         return false;
@@ -95,7 +95,7 @@ bool Database::createIPTable(const std::string& ip) {
     return true;
 }
 
-bool Database::insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp) {
+bool DatabaseManager::insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp) {
     if (!db) {
         std::cerr << "Database not initialized" << std::endl;
         return false;
@@ -168,7 +168,7 @@ bool Database::insertPingResult(const std::string& ip, const std::string& hostna
     return true;
 }
 
-void Database::queryIPStatistics(const std::string& ip) {
+void DatabaseManager::queryIPStatistics(const std::string& ip) {
     if (!db) {
         std::cerr << "Database not initialized" << std::endl;
         return;
@@ -319,7 +319,7 @@ void Database::queryIPStatistics(const std::string& ip) {
     sqlite3_finalize(recentStmt);
 }
 
-void Database::queryConsecutiveFailures(int failureCount) {
+void DatabaseManager::queryConsecutiveFailures(int failureCount) {
     if (!db) {
         std::cerr << "Database not initialized" << std::endl;
         return;
@@ -410,7 +410,7 @@ void Database::queryConsecutiveFailures(int failureCount) {
     sqlite3_finalize(hostsStmt);
 }
 
-void Database::cleanupOldData(int days) {
+void DatabaseManager::cleanupOldData(int days) {
     if (!db) {
         std::cerr << "Database not initialized" << std::endl;
         return;

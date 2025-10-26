@@ -1,19 +1,19 @@
-#ifndef DB_H
-#define DB_H
+#ifndef DATABASE_MANAGER_H
+#define DATABASE_MANAGER_H
 
 #include <string>
 #include <sqlite3.h>
 #include <vector>
 #include <tuple>
 
-class Database {
+class DatabaseManager {
 private:
     sqlite3* db;
     std::string dbPath;
 
 public:
-    Database(const std::string& path);
-    ~Database();
+    DatabaseManager(const std::string& path);
+    ~DatabaseManager();
     
     bool initialize();
     bool insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp);
@@ -26,4 +26,4 @@ private:
     std::string ipToTableName(const std::string& ip);
 };
 
-#endif // DB_H
+#endif // DATABASE_MANAGER_H

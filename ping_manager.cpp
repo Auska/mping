@@ -1,7 +1,7 @@
-#include "ping.h"
+#include "ping_manager.h"
 #include <iostream>
 
-std::vector<std::tuple<std::string, std::string, bool, short, std::string>> performPing(const std::map<std::string, std::string>& hosts) {
+std::vector<std::tuple<std::string, std::string, bool, short, std::string>> PingManager::performPing(const std::map<std::string, std::string>& hosts) {
     // 使用C++20的特性来并发执行ping操作
     std::vector<std::future<std::tuple<std::string, std::string, bool, short, std::string>>> futures;
     
