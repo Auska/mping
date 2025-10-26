@@ -9,7 +9,7 @@ void printUsage(const char* programName) {
     std::cout << "  -d, --database\tEnable database logging and specify database path\n";
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
     std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
-    std::cout << "  -c, --consecutive-failures [n]\tQuery hosts with n consecutive failures (requires -d)\n";
+    std::cout << "  -c, --consecutive-failures <n>\tQuery hosts with n consecutive failures (requires -d)\n";
     std::cout << "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)\n";
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "Default filename: ip.txt\n";

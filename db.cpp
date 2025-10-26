@@ -360,8 +360,8 @@ void Database::queryConsecutiveFailures(int failureCount) {
             
             // 检查是否存在连续失败的记录
             int consecutiveFailureCount = 0;
-            bool hasConsecutiveFailures = false;
-            std::vector<std::string> failureTimestamps;  // 记录连续失败的时间戳
+            std::vector<std::string> currentFailureTimestamps;  // 记录当前连续失败的时间戳
+            std::vector<std::string> lastMatchingFailures;     // 记录最后匹配的连续失败时间戳
             
             while (sqlite3_step(queryStmt) == SQLITE_ROW) {
                 int success = sqlite3_column_int(queryStmt, 0);
@@ -371,32 +371,36 @@ void Database::queryConsecutiveFailures(int failureCount) {
                     // 失败记录，增加连续失败计数
                     consecutiveFailureCount++;
                     if (timestamp) {
-                        failureTimestamps.push_back(std::string(timestamp));
+                        currentFailureTimestamps.push_back(std::string(timestamp));
                     }
                     
-                    // 如果连续失败次数达到要求，标记为有连续失败
+                    // 如果连续失败次数达到要求，保存这组连续失败的时间戳
                     if (consecutiveFailureCount >= failureCount) {
-                        hasConsecutiveFailures = true;
+                        // 保存最后failureCount个连续失败时间戳
+                        int count = currentFailureTimestamps.size();
+                        lastMatchingFailures.clear();
+                        int start = std::max(0, count - failureCount);
+                        for (int i = start; i < count; i++) {
+                            lastMatchingFailures.push_back(currentFailureTimestamps[i]);
+                        }
                     }
                 } else {
                     // 成功记录，重置连续失败计数
                     consecutiveFailureCount = 0;
-                    failureTimestamps.clear();
+                    currentFailureTimestamps.clear();
                 }
             }
             
             sqlite3_finalize(queryStmt);
             
-            // 如果存在连续失败，则输出信息
-            if (hasConsecutiveFailures) {
+            // 如果存在满足条件的连续失败，则输出信息
+            if (!lastMatchingFailures.empty()) {
                 std::string hostInfo = ipStr + " (" + hostnameStr + ")";
                 std::cout << hostInfo << ":" << std::endl;
                 
-                // 输出最近的连续失败时间戳
-                int count = failureTimestamps.size();
-                int start = std::max(0, count - failureCount);
-                for (int i = start; i < count; i++) {
-                    std::cout << "  " << failureTimestamps[i] << std::endl;
+                // 输出最后满足条件的连续失败时间戳
+                for (const auto& ts : lastMatchingFailures) {
+                    std::cout << "  " << ts << std::endl;
                 }
                 std::cout << std::endl;
             }

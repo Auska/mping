@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
         {"database", required_argument, nullptr, 'd'},
         {"file", required_argument, nullptr, 'f'},
         {"query", required_argument, nullptr, 'q'},
-        {"consecutive-failures", optional_argument, nullptr, 'c'},
+        {"consecutive-failures", required_argument, nullptr, 'c'},
         {"silent", no_argument, nullptr, 's'},
         {"cleanup", optional_argument, nullptr, 'C'},
         {nullptr, 0, nullptr, 0}
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
     std::string queryIP = "";
     int consecutiveFailures = -1;  // -1表示不查询连续失败
     int cleanupDays = -1;  // -1表示不执行清理
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c::sC::", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -56,8 +56,13 @@ int main(int argc, char* argv[]) {
                 queryIP = optarg;
                 break;
             case 'c':
-                // 如果提供了参数，使用指定的值，否则默认为3
-                consecutiveFailures = (optarg) ? std::stoi(optarg) : 3;
+                // 参数现在是必需的
+                try {
+                    consecutiveFailures = std::stoi(optarg);
+                } catch (const std::exception& e) {
+                    std::cerr << "Invalid value for consecutive failures: " << optarg << std::endl;
+                    return 1;
+                }
                 break;
             case 's':
                 silentMode = true;

@@ -31,7 +31,7 @@ The project follows a modular design with separated concerns:
 - `-d`, `--database`: Enable database logging and specify database path
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
 - `-q`, `--query`: Query statistics for a specific IP address (requires -d)
-- `-c`, `--consecutive-failures [n]`: Query hosts with n consecutive failures (requires -d)
+- `-c`, `--consecutive-failures <n>`: Query hosts with n consecutive failures (requires -d)
 - `-C`, `--cleanup [n]`: Clean up data older than n days (requires -d, default: 30)
 - `-s`, `--silent`: Silent mode, suppress output
 
@@ -86,11 +86,12 @@ The project consists of the following source files:
 # Query statistics for a specific IP
 ./mping -d ping_monitor.db -q 10.224.1.11
 
-# Query hosts with 3 consecutive failures
-./mping -d ping_monitor.db -c
-
 # Query hosts with 5 consecutive failures
 ./mping -d ping_monitor.db -c 5
+
+# Alternative formats for querying hosts with 5 consecutive failures
+./mping -d ping_monitor.db -c5
+./mping -d ping_monitor.db --consecutive-failures=5
 
 # Clean up data older than 30 days (default)
 ./mping -d ping_monitor.db -C
@@ -99,11 +100,18 @@ The project consists of the following source files:
 ./mping -d ping_monitor.db -C 60
 
 # Use a different database path
-./mping -d /path/to/mydb.db -c
+./mping -d /path/to/mydb.db
 
 # Use a different input file
 ./mping -d ping_monitor.db -f my_hosts.txt
 ```
+
+### Note on Consecutive Failures Parameter
+
+When using the `-c` option for querying consecutive failures:
+- `-c 5`: Query hosts with 5 consecutive failures (space is now supported)
+- `-c5`: Query hosts with 5 consecutive failures (no space)
+- `--consecutive-failures=5`: Alternative format for querying hosts with 5 consecutive failures
 
 ## Database Schema
 
