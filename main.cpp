@@ -56,12 +56,14 @@ int main(int argc, char* argv[]) {
         {"help", no_argument, nullptr, 'h'},
         {"database", no_argument, nullptr, 'd'},
         {"file", required_argument, nullptr, 'f'},
+        {"query", required_argument, nullptr, 'q'},
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hdf:", long_options, nullptr)) != -1) {
+    std::string queryIP = "";
+    while ((opt = getopt_long(argc, argv, "hdf:q:", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -71,6 +73,9 @@ int main(int argc, char* argv[]) {
                 break;
             case 'f':
                 filename = optarg;
+                break;
+            case 'q':
+                queryIP = optarg;
                 break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
@@ -82,6 +87,18 @@ int main(int argc, char* argv[]) {
     // 如果还有剩余的参数，将其视为文件名
     if (optind < argc) {
         filename = argv[optind];
+    }
+    
+    // 如果提供了查询IP，则只显示查询结果，不执行ping操作
+    if (!queryIP.empty()) {
+        Database db("ping_monitor.db");
+        if (!db.initialize()) {
+            std::cerr << "Failed to initialize database" << std::endl;
+            return 1;
+        }
+        
+        db.queryIPStatistics(queryIP);
+        return 0;
     }
     
     std::map<std::string, std::string> hosts = readHostsFromFile(filename);

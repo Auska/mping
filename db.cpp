@@ -4,6 +4,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
 
 Database::Database(const std::string& path) : dbPath(path), db(nullptr) {}
 
@@ -14,7 +15,7 @@ Database::~Database() {
 }
 
 // 辅助函数：将IP地址转换为有效的表名
-std::string ipToTableName(const std::string& ip) {
+std::string Database::ipToTableName(const std::string& ip) {
     std::string tableName = "ip_" + ip;
     // 将点号替换为下划线，确保表名有效
     std::replace(tableName.begin(), tableName.end(), '.', '_');
@@ -165,4 +166,155 @@ bool Database::insertPingResult(const std::string& ip, const std::string& hostna
     
     sqlite3_finalize(pingStmt);
     return true;
+}
+
+void Database::queryIPStatistics(const std::string& ip) {
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return;
+    }
+    
+    // 获取主机名
+    const char* selectHostSQL = "SELECT hostname FROM hosts WHERE ip = ?;";
+    sqlite3_stmt* hostStmt;
+    int rc = sqlite3_prepare_v2(db, selectHostSQL, -1, &hostStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare host query statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    std::string hostname = "";
+    if (sqlite3_step(hostStmt) == SQLITE_ROW) {
+        const char* hostText = (const char*)sqlite3_column_text(hostStmt, 0);
+        if (hostText) {
+            hostname = hostText;
+        }
+    }
+    sqlite3_finalize(hostStmt);
+    
+    std::cout << "Statistics for IP: " << ip << " (" << hostname << ")" << std::endl;
+    std::cout << "=========================================================" << std::endl;
+    
+    // 查询特定IP的表
+    std::string tableName = ipToTableName(ip);
+    
+    // 获取总记录数
+    std::ostringstream countSQLStream;
+    countSQLStream << "SELECT COUNT(*) FROM " << tableName << ";";
+    std::string countSQL = countSQLStream.str();
+    
+    sqlite3_stmt* countStmt;
+    rc = sqlite3_prepare_v2(db, countSQL.c_str(), -1, &countStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare count statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    int totalRecords = 0;
+    if (sqlite3_step(countStmt) == SQLITE_ROW) {
+        totalRecords = sqlite3_column_int(countStmt, 0);
+    }
+    sqlite3_finalize(countStmt);
+    
+    std::cout << "Total ping records: " << totalRecords << std::endl;
+    
+    if (totalRecords == 0) {
+        std::cout << "No ping records found for this IP." << std::endl;
+        return;
+    }
+    
+    // 获取成功和失败的次数
+    std::ostringstream successSQLStream;
+    successSQLStream << "SELECT COUNT(*) FROM " << tableName << " WHERE success = 1;";
+    std::string successSQL = successSQLStream.str();
+    
+    sqlite3_stmt* successStmt;
+    rc = sqlite3_prepare_v2(db, successSQL.c_str(), -1, &successStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare success count statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    int successCount = 0;
+    if (sqlite3_step(successStmt) == SQLITE_ROW) {
+        successCount = sqlite3_column_int(successStmt, 0);
+    }
+    sqlite3_finalize(successStmt);
+    
+    int failureCount = totalRecords - successCount;
+    double successRate = (totalRecords > 0) ? (double)successCount / totalRecords * 100 : 0;
+    
+    std::cout << "Successful pings: " << successCount << std::endl;
+    std::cout << "Failed pings: " << failureCount << std::endl;
+    std::cout << "Success rate: " << std::fixed << std::setprecision(2) << successRate << "%" << std::endl;
+    
+    // 获取平均延迟
+    std::ostringstream avgDelaySQLStream;
+    avgDelaySQLStream << "SELECT AVG(delay) FROM " << tableName << " WHERE success = 1;";
+    std::string avgDelaySQL = avgDelaySQLStream.str();
+    
+    sqlite3_stmt* avgDelayStmt;
+    rc = sqlite3_prepare_v2(db, avgDelaySQL.c_str(), -1, &avgDelayStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare average delay statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    double avgDelay = 0;
+    if (sqlite3_step(avgDelayStmt) == SQLITE_ROW) {
+        avgDelay = sqlite3_column_double(avgDelayStmt, 0);
+    }
+    sqlite3_finalize(avgDelayStmt);
+    
+    std::cout << "Average delay (successful pings): " << std::fixed << std::setprecision(2) << avgDelay << "ms" << std::endl;
+    
+    // 获取最大和最小延迟
+    std::ostringstream maxMinDelaySQLStream;
+    maxMinDelaySQLStream << "SELECT MAX(delay), MIN(delay) FROM " << tableName << " WHERE success = 1;";
+    std::string maxMinDelaySQL = maxMinDelaySQLStream.str();
+    
+    sqlite3_stmt* maxMinDelayStmt;
+    rc = sqlite3_prepare_v2(db, maxMinDelaySQL.c_str(), -1, &maxMinDelayStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare max/min delay statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    int maxDelay = 0, minDelay = 0;
+    if (sqlite3_step(maxMinDelayStmt) == SQLITE_ROW) {
+        maxDelay = sqlite3_column_int(maxMinDelayStmt, 0);
+        minDelay = sqlite3_column_int(maxMinDelayStmt, 1);
+    }
+    sqlite3_finalize(maxMinDelayStmt);
+    
+    std::cout << "Maximum delay (successful pings): " << maxDelay << "ms" << std::endl;
+    std::cout << "Minimum delay (successful pings): " << minDelay << "ms" << std::endl;
+    
+    // 显示最近的10条记录
+    std::ostringstream recentSQLStream;
+    recentSQLStream << "SELECT delay, success, timestamp FROM " << tableName << " ORDER BY timestamp DESC LIMIT 10;";
+    std::string recentSQL = recentSQLStream.str();
+    
+    sqlite3_stmt* recentStmt;
+    rc = sqlite3_prepare_v2(db, recentSQL.c_str(), -1, &recentStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare recent records statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    std::cout << "\nRecent ping records (last 10):" << std::endl;
+    std::cout << "Timestamp           \tDelay\tStatus" << std::endl;
+    std::cout << "--------------------------------------------------------" << std::endl;
+    
+    while (sqlite3_step(recentStmt) == SQLITE_ROW) {
+        const char* timestamp = (const char*)sqlite3_column_text(recentStmt, 2);
+        int delay = sqlite3_column_int(recentStmt, 0);
+        int success = sqlite3_column_int(recentStmt, 1);
+        
+        std::cout << (timestamp ? timestamp : "N/A") << "\t" 
+                  << delay << "ms\t" 
+                  << (success ? "Success" : "Failed") << std::endl;
+    }
+    sqlite3_finalize(recentStmt);
 }

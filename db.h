@@ -3,6 +3,8 @@
 
 #include <string>
 #include <sqlite3.h>
+#include <vector>
+#include <tuple>
 
 class Database {
 private:
@@ -15,9 +17,11 @@ public:
     
     bool initialize();
     bool insertPingResult(const std::string& ip, const std::string& hostname, long long delay, bool success, const std::string& timestamp);
+    void queryIPStatistics(const std::string& ip);
     
 private:
     bool createIPTable(const std::string& ip);
+    std::string ipToTableName(const std::string& ip);
 };
 
 #endif // DB_H

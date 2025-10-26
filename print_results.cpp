@@ -8,6 +8,7 @@ void printUsage(const char* programName) {
     std::cout << "  -h, --help\t\tShow this help message\n";
     std::cout << "  -d, --database\tEnable database logging (default: enabled)\n";
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
+    std::cout << "  -q, --query\t\tQuery statistics for a specific IP address\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
 }
