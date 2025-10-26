@@ -15,6 +15,9 @@ public:
     
     bool initialize();
     bool insertPingResult(const std::string& ip, const std::string& hostname, long long delay, bool success, const std::string& timestamp);
+    
+private:
+    bool createIPTable(const std::string& ip);
 };
 
 #endif // DB_H
