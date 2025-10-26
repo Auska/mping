@@ -68,10 +68,23 @@ int main(int argc, char* argv[]) {
     }
     
     // 读取主机列表
-    std::map<std::string, std::string> hosts = readHostsFromFile(config.filename);
+    std::map<std::string, std::string> hosts;
+    
+    // 如果指定了文件名（通过-f参数或命令行参数），则从文件读取主机列表
+    // 否则如果启用了数据库，则从数据库的hosts表读取主机列表
+    if (!config.filename.empty()) {
+        hosts = readHostsFromFile(config.filename);
+    } else if (config.enableDatabase) {
+        DatabaseManager db(config.databasePath);
+        if (!db.initialize()) {
+            std::cerr << "Failed to initialize database" << std::endl;
+            return 1;
+        }
+        hosts = db.getAllHosts();
+    }
     
     if (hosts.empty()) {
-        std::cerr << "No hosts to ping. Please check the input file." << std::endl;
+        std::cerr << "No hosts to ping. Please check the input file or database." << std::endl;
         return 1;
     }
     
@@ -79,9 +92,9 @@ int main(int argc, char* argv[]) {
     PingManager pingManager;
     std::vector<std::tuple<std::string, std::string, bool, short, std::string>> allResults = pingManager.performPing(hosts, config.pingCount);
     
-    // 初始化数据库管理器
-    DatabaseManager db(config.databasePath);
+    // 如果启用了数据库，则初始化数据库管理器并存储结果
     if (config.enableDatabase) {
+        DatabaseManager db(config.databasePath);
         if (!db.initialize()) {
             std::cerr << "Failed to initialize database" << std::endl;
             return 1;

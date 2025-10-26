@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
+#include <map>
 
 DatabaseManager::DatabaseManager(const std::string& path) : dbPath(path), db(nullptr) {}
 
@@ -482,4 +483,36 @@ void DatabaseManager::cleanupOldData(int days) {
     
     std::cout << "Total deleted records: " << totalDeleted << std::endl;
     std::cout << "Cleanup completed." << std::endl;
+}
+
+std::map<std::string, std::string> DatabaseManager::getAllHosts() {
+    std::map<std::string, std::string> hosts;
+    
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return hosts;
+    }
+    
+    // 查询所有主机
+    const char* selectHostsSQL = "SELECT ip, hostname FROM hosts;";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, selectHostsSQL, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare hosts query statement: " << sqlite3_errmsg(db) << std::endl;
+        return hosts;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* ip = (const char*)sqlite3_column_text(stmt, 0);
+        const char* hostname = (const char*)sqlite3_column_text(stmt, 1);
+        
+        if (ip) {
+            std::string ipStr = ip;
+            std::string hostnameStr = hostname ? hostname : "";
+            hosts[ipStr] = hostnameStr;
+        }
+    }
+    
+    sqlite3_finalize(stmt);
+    return hosts;
 }

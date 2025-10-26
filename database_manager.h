@@ -5,6 +5,7 @@
 #include <sqlite3.h>
 #include <vector>
 #include <tuple>
+#include <map>
 
 class DatabaseManager {
 private:
@@ -20,6 +21,7 @@ public:
     void queryIPStatistics(const std::string& ip);
     void queryConsecutiveFailures(int failureCount);
     void cleanupOldData(int days = 30);
+    std::map<std::string, std::string> getAllHosts();
     
 private:
     bool createIPTable(const std::string& ip);
