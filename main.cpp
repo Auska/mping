@@ -1,4 +1,5 @@
 #include "print_results.h"
+#include "db.h"
 #include <vector>
 #include <string>
 #include <thread>
@@ -48,30 +49,35 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
 
 int main(int argc, char* argv[]) {
     std::string filename = "ip.txt";
-    bool showSuccess = false;
+    bool enableDatabase = true;  // 默认启用数据库
     
     // 定义长选项
     const struct option long_options[] = {
         {"help", no_argument, nullptr, 'h'},
-        {"show-success", no_argument, nullptr, 's'},
+        {"database", no_argument, nullptr, 'd'},
+        {"file", required_argument, nullptr, 'f'},
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hs", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hdf:", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
                 return 0;
-            case 's':
-                showSuccess = true;
+            case 'd':
+                enableDatabase = true;
+                break;
+            case 'f':
+                filename = optarg;
                 break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
                 return 1;
         }
     }
+
     
     // 如果还有剩余的参数，将其视为文件名
     if (optind < argc) {
@@ -86,7 +92,7 @@ int main(int argc, char* argv[]) {
     }
     
     // 使用C++20的特性来并发执行ping操作
-    std::vector<std::future<std::tuple<std::string, std::string, bool, long long>>> futures;
+    std::vector<std::future<std::tuple<std::string, std::string, bool, long long, std::string>>> futures;  // 添加时间戳
     
     for (const auto& [ip, hostname] : hosts) {
         futures.emplace_back(std::async(std::launch::async, [&ip, &hostname]() {
@@ -97,34 +103,47 @@ int main(int argc, char* argv[]) {
             auto end = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
             
+            // 获取当前时间戳
+            auto now = std::chrono::system_clock::now();
+            auto time_t = std::chrono::system_clock::to_time_t(now);
+            std::stringstream timestamp;
+            timestamp << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+            
             // 如果命令超时，system()会返回124（timeout命令的退出码）
             // 在这种情况下，我们也认为ping失败
             bool success = (result == 0 && result != 124);
             
-            return std::make_tuple(ip, hostname, success, static_cast<long long>(duration));
+            return std::make_tuple(ip, hostname, success, static_cast<long long>(duration), timestamp.str());
         }));
     }
     
-    // 收集成功和失败的主机
-    std::vector<std::pair<std::string, std::string>> failedHosts;
-    std::vector<std::tuple<std::string, std::string, long long>> successfulHosts;
+    // 收集所有主机的结果
+    std::vector<std::tuple<std::string, std::string, bool, long long, std::string>> allResults;  // 添加时间戳
     
     // 等待所有任务完成并收集结果
-    for (auto& f : futures) {
-        auto [ip, hostname, result, delay] = f.get();
-        if (!result) {
-            failedHosts.emplace_back(ip, hostname);
-        } else if (showSuccess) {
-            successfulHosts.emplace_back(ip, hostname, delay);
+    // 初始化数据库
+    Database db("ping_monitor.db");
+    if (enableDatabase) {
+        if (!db.initialize()) {
+            std::cerr << "Failed to initialize database" << std::endl;
+            return 1;
         }
     }
     
-    // 输出成功的主机（如果需要）
-    if (showSuccess) {
-        printSuccessfulHosts(successfulHosts);
-    } else {
-    // 默认输出失败的主机
-    printFailedHosts(failedHosts);
+    for (auto& f : futures) {
+        auto [ip, hostname, result, delay, timestamp] = f.get();
+        // 将结果插入数据库
+        if (enableDatabase) {
+            db.insertPingResult(ip, hostname, delay, result, timestamp);
+        }
+        
+        // 保存所有结果
+        allResults.emplace_back(ip, hostname, result, delay, timestamp);
+    }
+    
+    // 打印所有IP地址和结果
+    for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
+        std::cout << ip << "\t" << hostname << "\t" << (success ? "success" : "failed") << "\t" << delay << "ms" << std::endl;
     }
 
     return 0;
