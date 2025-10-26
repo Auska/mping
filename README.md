@@ -1,13 +1,15 @@
 # mping - Multi-host Ping Tool
 
-mping is a command-line tool for checking the connectivity of multiple hosts simultaneously. It reads a list of IP addresses and hostnames from a file and performs ping operations on them concurrently.
+mping is a command-line tool for checking the connectivity of multiple hosts simultaneously. It reads a list of IP addresses and hostnames from a file and performs ping operations on them concurrently. The tool also provides database logging and query capabilities to analyze ping results.
 
 ## Features
 
 - Concurrently ping multiple hosts for faster results
 - Read hosts from a file with IP addresses and hostnames
-- Display failed hosts by default
-- Optionally display successful hosts with response time
+- Display all hosts with status and response time
+- Database logging of ping results with SQLite
+- Query statistics for specific IP addresses
+- Query hosts with consecutive failures
 - Configurable timeout for ping operations
 
 ## Usage
@@ -19,12 +21,15 @@ mping is a command-line tool for checking the connectivity of multiple hosts sim
 ### Options
 
 - `-h`, `--help`: Show help message
-- `-s`, `--show-success`: Show successful hosts (IP, hostname, delay)
+- `-d`, `--database`: Enable database logging (default: enabled)
+- `-f`, `--file`: Specify input file with hosts (default: ip.txt)
+- `-q`, `--query`: Query statistics for a specific IP address
+- `-c`, `--consecutive-failures [n]`: Query hosts with n consecutive failures (default: 3)
 
 ### Default behavior
 
 - Default filename: `ip.txt`
-- Default behavior: Show failed hosts (IP, hostname)
+- Default behavior: Show all hosts with status (IP, hostname, status, delay)
 
 ### File format
 
@@ -44,6 +49,7 @@ To build mping, you need:
 
 - CMake 3.10 or higher
 - A C++20 compatible compiler
+- SQLite3 development libraries
 
 ```bash
 mkdir build
@@ -55,9 +61,25 @@ make
 ## Example
 
 ```bash
-# Show failed hosts
-./mping ip.txt
+# Ping all hosts in ip.txt
+./mping
 
-# Show successful hosts with response time
-./mping --show-success ip.txt
+# Query statistics for a specific IP
+./mping -q 10.224.1.11
+
+# Query hosts with 3 consecutive failures
+./mping -c
+
+# Query hosts with 5 consecutive failures
+./mping -c 5
+
+# Use a different input file
+./mping -f my_hosts.txt
 ```
+
+## Database Schema
+
+The tool creates two types of tables:
+
+1. `hosts` table: Stores IP addresses and hostnames with creation and last seen timestamps
+2. IP-specific tables: Each IP gets its own table (e.g., `ip_10_224_1_11`) to store ping results with delay, success status, and timestamp.
