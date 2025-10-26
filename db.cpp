@@ -92,16 +92,6 @@ bool Database::createIPTable(const std::string& ip) {
         return false;
     }
     
-    std::string createTableSQL = createTableSQLStream.str();
-    
-    char* errMsg = 0;
-    int rc = sqlite3_exec(db, createTableSQL.c_str(), 0, 0, &errMsg);
-    if (rc != SQLITE_OK) {
-        std::cerr << "SQL error creating table for IP " << ip << ": " << errMsg << std::endl;
-        sqlite3_free(errMsg);
-        return false;
-    }
-    
     return true;
 }
 
