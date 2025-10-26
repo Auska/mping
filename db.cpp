@@ -318,3 +318,90 @@ void Database::queryIPStatistics(const std::string& ip) {
     }
     sqlite3_finalize(recentStmt);
 }
+
+void Database::queryConsecutiveFailures(int failureCount) {
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return;
+    }
+    
+    // 获取所有IP地址
+    const char* selectHostsSQL = "SELECT ip, hostname FROM hosts;";
+    sqlite3_stmt* hostsStmt;
+    int rc = sqlite3_prepare_v2(db, selectHostsSQL, -1, &hostsStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare hosts query statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    std::cout << "Hosts with " << failureCount << " consecutive failures:" << std::endl;
+    std::cout << "=========================================================" << std::endl;
+    
+    while (sqlite3_step(hostsStmt) == SQLITE_ROW) {
+        const char* ip = (const char*)sqlite3_column_text(hostsStmt, 0);
+        const char* hostname = (const char*)sqlite3_column_text(hostsStmt, 1);
+        
+        if (ip) {
+            std::string ipStr = ip;
+            std::string hostnameStr = hostname ? hostname : "";
+            std::string tableName = ipToTableName(ipStr);
+            
+            // 查询该IP的ping记录，按时间排序
+            std::ostringstream querySQLStream;
+            querySQLStream << "SELECT success, timestamp FROM " << tableName << " ORDER BY timestamp;";
+            std::string querySQL = querySQLStream.str();
+            
+            sqlite3_stmt* queryStmt;
+            rc = sqlite3_prepare_v2(db, querySQL.c_str(), -1, &queryStmt, 0);
+            if (rc != SQLITE_OK) {
+                std::cerr << "Failed to prepare query statement for IP " << ipStr << ": " << sqlite3_errmsg(db) << std::endl;
+                continue;
+            }
+            
+            // 检查是否存在连续失败的记录
+            int consecutiveFailureCount = 0;
+            bool hasConsecutiveFailures = false;
+            std::vector<std::string> failureTimestamps;  // 记录连续失败的时间戳
+            
+            while (sqlite3_step(queryStmt) == SQLITE_ROW) {
+                int success = sqlite3_column_int(queryStmt, 0);
+                const char* timestamp = (const char*)sqlite3_column_text(queryStmt, 1);
+                
+                if (success == 0) {
+                    // 失败记录，增加连续失败计数
+                    consecutiveFailureCount++;
+                    if (timestamp) {
+                        failureTimestamps.push_back(std::string(timestamp));
+                    }
+                    
+                    // 如果连续失败次数达到要求，标记为有连续失败
+                    if (consecutiveFailureCount >= failureCount) {
+                        hasConsecutiveFailures = true;
+                    }
+                } else {
+                    // 成功记录，重置连续失败计数
+                    consecutiveFailureCount = 0;
+                    failureTimestamps.clear();
+                }
+            }
+            
+            sqlite3_finalize(queryStmt);
+            
+            // 如果存在连续失败，则输出信息
+            if (hasConsecutiveFailures) {
+                std::string hostInfo = ipStr + " (" + hostnameStr + ")";
+                std::cout << hostInfo << ":" << std::endl;
+                
+                // 输出最近的连续失败时间戳
+                int count = failureTimestamps.size();
+                int start = std::max(0, count - failureCount);
+                for (int i = start; i < count; i++) {
+                    std::cout << "  " << failureTimestamps[i] << std::endl;
+                }
+                std::cout << std::endl;
+            }
+        }
+    }
+    
+    sqlite3_finalize(hostsStmt);
+}

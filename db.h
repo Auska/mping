@@ -18,6 +18,7 @@ public:
     bool initialize();
     bool insertPingResult(const std::string& ip, const std::string& hostname, long long delay, bool success, const std::string& timestamp);
     void queryIPStatistics(const std::string& ip);
+    void queryConsecutiveFailures(int failureCount);
     
 private:
     bool createIPTable(const std::string& ip);

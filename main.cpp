@@ -57,13 +57,15 @@ int main(int argc, char* argv[]) {
         {"database", no_argument, nullptr, 'd'},
         {"file", required_argument, nullptr, 'f'},
         {"query", required_argument, nullptr, 'q'},
+        {"consecutive-failures", optional_argument, nullptr, 'c'},
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
     std::string queryIP = "";
-    while ((opt = getopt_long(argc, argv, "hdf:q:", long_options, nullptr)) != -1) {
+    int consecutiveFailures = -1;  // -1表示不查询连续失败
+    while ((opt = getopt_long(argc, argv, "hdf:q:c::", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -76,6 +78,10 @@ int main(int argc, char* argv[]) {
                 break;
             case 'q':
                 queryIP = optarg;
+                break;
+            case 'c':
+                // 如果提供了参数，使用指定的值，否则默认为3
+                consecutiveFailures = (optarg) ? std::stoi(optarg) : 3;
                 break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
@@ -98,6 +104,18 @@ int main(int argc, char* argv[]) {
         }
         
         db.queryIPStatistics(queryIP);
+        return 0;
+    }
+    
+    // 如果请求查询连续失败的主机，则只显示查询结果，不执行ping操作
+    if (consecutiveFailures >= 0) {
+        Database db("ping_monitor.db");
+        if (!db.initialize()) {
+            std::cerr << "Failed to initialize database" << std::endl;
+            return 1;
+        }
+        
+        db.queryConsecutiveFailures(consecutiveFailures);
         return 0;
     }
     
