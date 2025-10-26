@@ -4,12 +4,20 @@ project(mping)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 查找SQLite3库
+# Set default installation prefix
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation directory" FORCE)
+endif()
+
+# Find SQLite3 library
 find_package(SQLite3 REQUIRED)
 
-# 添加可执行文件
+# Add executable
 add_executable(mping main.cpp print_results.cpp db.cpp)
 
-# 链接线程库和SQLite3库
+# Link pthread and SQLite3 libraries
 find_package(Threads REQUIRED)
 target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3)
+
+# Install rules
+install(TARGETS mping RUNTIME DESTINATION bin)
