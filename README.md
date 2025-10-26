@@ -2,6 +2,13 @@
 
 mping is a command-line tool for checking the connectivity of multiple hosts simultaneously. It reads a list of IP addresses and hostnames from a file and performs ping operations on them concurrently. The tool also provides database logging and query capabilities to analyze ping results.
 
+The project follows a modular design with separated concerns:
+- `main.cpp`: Command-line interface and argument parsing
+- `utils.cpp`/`utils.h`: Utility functions for file operations
+- `ping.cpp`/`ping.h`: Core ping functionality
+- `db.cpp`/`db.h`: Database operations
+- `print_results.cpp`/`print_results.h`: Output formatting and display
+
 ## Features
 
 - Concurrently ping multiple hosts for faster results
@@ -59,6 +66,13 @@ cd build
 cmake ..
 make
 ```
+
+The project consists of the following source files:
+- `main.cpp`: Main entry point and command-line argument handling
+- `utils.cpp`/`utils.h`: Utility functions for reading hosts from file
+- `ping.cpp`/`ping.h`: Core ping functionality with concurrent execution
+- `db.cpp`/`db.h`: Database operations for storing and querying results
+- `print_results.cpp`/`print_results.h`: Functions for displaying results and help
 
 ## Example
 
