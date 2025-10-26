@@ -51,6 +51,7 @@ int main(int argc, char* argv[]) {
     std::string filename = "ip.txt";
     bool enableDatabase = false;  // 默认不启用数据库
     std::string databasePath = "ping_monitor.db";  // 默认数据库路径
+    bool silentMode = false;  // 默认不启用静默模式
     
     // 定义长选项
     const struct option long_options[] = {
@@ -59,6 +60,7 @@ int main(int argc, char* argv[]) {
         {"file", required_argument, nullptr, 'f'},
         {"query", required_argument, nullptr, 'q'},
         {"consecutive-failures", optional_argument, nullptr, 'c'},
+        {"silent", no_argument, nullptr, 's'},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -66,7 +68,7 @@ int main(int argc, char* argv[]) {
     int opt;
     std::string queryIP = "";
     int consecutiveFailures = -1;  // -1表示不查询连续失败
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c::", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c::s", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -84,6 +86,9 @@ int main(int argc, char* argv[]) {
             case 'c':
                 // 如果提供了参数，使用指定的值，否则默认为3
                 consecutiveFailures = (optarg) ? std::stoi(optarg) : 3;
+                break;
+            case 's':
+                silentMode = true;
                 break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
@@ -188,9 +193,11 @@ int main(int argc, char* argv[]) {
         allResults.emplace_back(ip, hostname, result, delay, timestamp);
     }
     
-    // 打印所有IP地址和结果
-    for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
-        std::cout << ip << "\t" << hostname << "\t" << (success ? "success" : "failed") << "\t" << delay << "ms" << std::endl;
+    // 打印所有IP地址和结果（除非启用静默模式）
+    if (!silentMode) {
+        for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
+            std::cout << ip << "\t" << hostname << "\t" << (success ? "success" : "failed") << "\t" << delay << "ms" << std::endl;
+        }
     }
 
     return 0;

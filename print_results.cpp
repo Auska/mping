@@ -10,6 +10,7 @@ void printUsage(const char* programName) {
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
     std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
     std::cout << "  -c, --consecutive-failures [n]\tQuery hosts with n consecutive failures (requires -d)\n";
+    std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
 }

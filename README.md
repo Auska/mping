@@ -25,6 +25,7 @@ mping is a command-line tool for checking the connectivity of multiple hosts sim
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
 - `-q`, `--query`: Query statistics for a specific IP address (requires -d)
 - `-c`, `--consecutive-failures [n]`: Query hosts with n consecutive failures (requires -d)
+- `-s`, `--silent`: Silent mode, suppress output
 
 ### Default behavior
 
@@ -63,6 +64,9 @@ make
 ```bash
 # Ping all hosts in ip.txt with database logging
 ./mping -d ping_monitor.db
+
+# Ping all hosts in silent mode
+./mping -d ping_monitor.db -s
 
 # Query statistics for a specific IP
 ./mping -d ping_monitor.db -q 10.224.1.11
