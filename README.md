@@ -25,6 +25,7 @@ mping is a command-line tool for checking the connectivity of multiple hosts sim
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
 - `-q`, `--query`: Query statistics for a specific IP address (requires -d)
 - `-c`, `--consecutive-failures [n]`: Query hosts with n consecutive failures (requires -d)
+- `-C`, `--cleanup [n]`: Clean up data older than n days (requires -d, default: 30)
 - `-s`, `--silent`: Silent mode, suppress output
 
 ### Default behavior
@@ -76,6 +77,12 @@ make
 
 # Query hosts with 5 consecutive failures
 ./mping -d ping_monitor.db -c 5
+
+# Clean up data older than 30 days (default)
+./mping -d ping_monitor.db -C
+
+# Clean up data older than 60 days
+./mping -d ping_monitor.db -C 60
 
 # Use a different database path
 ./mping -d /path/to/mydb.db -c

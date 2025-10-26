@@ -61,6 +61,7 @@ int main(int argc, char* argv[]) {
         {"query", required_argument, nullptr, 'q'},
         {"consecutive-failures", optional_argument, nullptr, 'c'},
         {"silent", no_argument, nullptr, 's'},
+        {"cleanup", optional_argument, nullptr, 'C'},
         {nullptr, 0, nullptr, 0}
     };
     
@@ -68,7 +69,8 @@ int main(int argc, char* argv[]) {
     int opt;
     std::string queryIP = "";
     int consecutiveFailures = -1;  // -1表示不查询连续失败
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c::s", long_options, nullptr)) != -1) {
+    int cleanupDays = -1;  // -1表示不执行清理
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c::sC::", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -89,6 +91,11 @@ int main(int argc, char* argv[]) {
                 break;
             case 's':
                 silentMode = true;
+                break;
+            case 'C':
+                // 如果提供了参数，使用指定的值，否则默认为30天
+                enableDatabase = true;  // 清理功能需要启用数据库
+                cleanupDays = (optarg) ? std::stoi(optarg) : 30;
                 break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
@@ -116,6 +123,23 @@ int main(int argc, char* argv[]) {
         }
         
         db.queryIPStatistics(queryIP);
+        return 0;
+    }
+    
+    // 如果请求执行清理操作
+    if (cleanupDays >= 0) {
+        if (!enableDatabase) {
+            std::cerr << "Database must be enabled to cleanup data. Use -d option to specify database path.\n";
+            return 1;
+        }
+        
+        Database db(databasePath);
+        if (!db.initialize()) {
+            std::cerr << "Failed to initialize database" << std::endl;
+            return 1;
+        }
+        
+        db.cleanupOldData(cleanupDays);
         return 0;
     }
     

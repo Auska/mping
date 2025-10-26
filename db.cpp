@@ -405,3 +405,77 @@ void Database::queryConsecutiveFailures(int failureCount) {
     
     sqlite3_finalize(hostsStmt);
 }
+
+void Database::cleanupOldData(int days) {
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return;
+    }
+    
+    std::cout << "Cleaning up data older than " << days << " days..." << std::endl;
+    
+    // 获取所有IP地址
+    const char* selectHostsSQL = "SELECT ip FROM hosts;";
+    sqlite3_stmt* hostsStmt;
+    int rc = sqlite3_prepare_v2(db, selectHostsSQL, -1, &hostsStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare hosts query statement: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+    
+    int totalDeleted = 0;
+    
+    while (sqlite3_step(hostsStmt) == SQLITE_ROW) {
+        const char* ip = (const char*)sqlite3_column_text(hostsStmt, 0);
+        
+        if (ip) {
+            std::string ipStr = ip;
+            std::string tableName = ipToTableName(ipStr);
+            
+            // 删除指定天数之前的数据
+            std::ostringstream deleteSQLStream;
+            deleteSQLStream << "DELETE FROM " << tableName << " WHERE timestamp < datetime('now', '-" << days << " days');";
+            std::string deleteSQL = deleteSQLStream.str();
+            
+            char* errMsg = 0;
+            rc = sqlite3_exec(db, deleteSQL.c_str(), 0, 0, &errMsg);
+            if (rc != SQLITE_OK) {
+                std::cerr << "SQL error deleting old data for IP " << ipStr << ": " << errMsg << std::endl;
+                sqlite3_free(errMsg);
+                continue;
+            }
+            
+            int deletedRows = sqlite3_changes(db);
+            totalDeleted += deletedRows;
+            
+            if (deletedRows > 0) {
+                std::cout << "Deleted " << deletedRows << " old records for IP " << ipStr << std::endl;
+            }
+        }
+    }
+    
+    sqlite3_finalize(hostsStmt);
+    
+    // 清理hosts表中没有关联数据的IP记录
+    const char* cleanHostsSQL = R"(
+        DELETE FROM hosts WHERE ip NOT IN (
+            SELECT DISTINCT substr(name, 4) FROM sqlite_master 
+            WHERE type = 'table' AND name LIKE 'ip_%'
+        );
+    )";
+    
+    char* errMsg = 0;
+    rc = sqlite3_exec(db, cleanHostsSQL, 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error cleaning hosts table: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+    } else {
+        int deletedHosts = sqlite3_changes(db);
+        if (deletedHosts > 0) {
+            std::cout << "Deleted " << deletedHosts << " unused host records" << std::endl;
+        }
+    }
+    
+    std::cout << "Total deleted records: " << totalDeleted << std::endl;
+    std::cout << "Cleanup completed." << std::endl;
+}

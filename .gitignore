@@ -3,7 +3,7 @@ build/
 
 # Binary files
 mping
-ping_monitor.db
+*.db
 
 # IDE files
 *.swp
