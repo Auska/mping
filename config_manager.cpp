@@ -1,5 +1,4 @@
 #include "config_manager.h"
-#include "print_results.h"
 #include <iostream>
 #include <unistd.h>
 
