@@ -1,4 +1,5 @@
 #include "config_manager.h"
+#include "version_info.h"
 #include <iostream>
 #include <unistd.h>
 
@@ -33,7 +34,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 printUsage(argv[0]);
                 return false;
             case 'v':
-                std::cout << "mping version 1.0.0\n";
+                print_version_info();
                 return false;
             case 'd':
                 config.enableDatabase = true;
