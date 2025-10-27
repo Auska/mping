@@ -2,11 +2,6 @@
 #include <iostream>
 #include <string>
 
-// 编译时间信息
-#ifndef COMPILE_TIME
-#define COMPILE_TIME __DATE__ " " __TIME__
-#endif
-
 void print_version_info() {
     std::cout << PROJECT_NAME << " version " << PROJECT_VERSION << std::endl;
     std::cout << "Description: " << PROJECT_DESCRIPTION << std::endl;

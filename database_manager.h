@@ -6,6 +6,7 @@
 #include <vector>
 #include <tuple>
 #include <map>
+#include <regex>
 
 class DatabaseManager {
 private:
@@ -18,6 +19,7 @@ public:
     
     bool initialize();
     bool insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp);
+    bool insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
     void queryIPStatistics(const std::string& ip);
     void queryConsecutiveFailures(int failureCount);
     void cleanupOldData(int days = 30);
@@ -26,6 +28,7 @@ public:
 private:
     bool createIPTable(const std::string& ip);
     std::string ipToTableName(const std::string& ip);
+    bool isValidIP(const std::string& ip);
 };
 
 #endif // DATABASE_MANAGER_H

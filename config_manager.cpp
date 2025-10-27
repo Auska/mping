@@ -2,6 +2,7 @@
 #include "version_info.h"
 #include <iostream>
 #include <unistd.h>
+#include <stdexcept>
 
 ConfigManager::ConfigManager() {}
 
@@ -22,13 +23,14 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         {"silent", no_argument, nullptr, 's'},
         {"cleanup", optional_argument, nullptr, 'C'},
         {"count", required_argument, nullptr, 'n'},
+        {"timeout", required_argument, nullptr, 't'},
         {"version", no_argument, nullptr, 'v'},
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::n:v", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::n:t:v", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -75,6 +77,18 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     return false;
                 }
                 break;
+            case 't':
+                try {
+                    config.timeoutSeconds = std::stoi(optarg);
+                    if (config.timeoutSeconds <= 0) {
+                        std::cerr << "Timeout must be a positive integer." << std::endl;
+                        return false;
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "Invalid value for timeout: " << optarg << std::endl;
+                    return false;
+                }
+                break;
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
                 return false;
@@ -106,6 +120,7 @@ void ConfigManager::printUsage(const char* programName) {
     std::cout << "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)\n";
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";
+    std::cout << "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
 }

@@ -4,6 +4,7 @@ build/
 # Binary files
 mping
 *.db
+IFLOW.md
 
 # IDE files
 *.swp

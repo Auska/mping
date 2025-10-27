@@ -17,6 +17,7 @@ public:
         int consecutiveFailures = -1;  // -1表示不查询连续失败
         int cleanupDays = -1;  // -1表示不执行清理
         int pingCount = 3;  // 默认发送3个包
+        int timeoutSeconds = 3;  // 默认超时时间（秒）
     };
 
 private:
