@@ -9,7 +9,7 @@
 class ConfigManager {
 public:
     struct Config {
-        std::string filename = "ip.txt";
+        std::string filename = "";
         bool enableDatabase = false;
         std::string databasePath = "ping_monitor.db";
         bool silentMode = false;

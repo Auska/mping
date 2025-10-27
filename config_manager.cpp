@@ -121,6 +121,7 @@ void ConfigManager::printUsage(const char* programName) {
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";
     std::cout << "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)\n";
+    std::cout << "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
 }

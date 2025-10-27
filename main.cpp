@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
         
         // 如果指定了文件名（通过-f参数或命令行参数），则从文件读取主机列表
         // 否则如果启用了数据库，则从数据库的hosts表读取主机列表
+        // 如果两者都没有指定，则默认从ip.txt文件读取
         if (!config.filename.empty()) {
             hosts = readHostsFromFile(config.filename);
         } else if (config.enableDatabase) {
@@ -83,6 +84,9 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             hosts = db.getAllHosts();
+        } else {
+            // 默认从ip.txt文件读取
+            hosts = readHostsFromFile("ip.txt");
         }
         
         if (hosts.empty()) {
