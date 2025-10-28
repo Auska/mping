@@ -138,7 +138,13 @@ The tool creates two types of tables:
 
 ### Suppressing PostgreSQL NOTICE Messages
 
-When using PostgreSQL, you might see NOTICE messages about existing tables. To suppress these messages, you can add `client_min_messages=warning` to your PostgreSQL connection string:
+When using PostgreSQL, you might see NOTICE messages about existing tables. The application now automatically handles this by setting `client_min_messages` to WARNING by default if not specified in the connection string:
+
+```bash
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -P
+```
+
+Alternatively, you can still specify the parameter in your connection string:
 
 ```bash
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb client_min_messages=warning" -P
