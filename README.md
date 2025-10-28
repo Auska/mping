@@ -136,18 +136,3 @@ The tool creates two types of tables:
 1. `hosts` table: Stores IP addresses and hostnames with creation and last seen timestamps
 2. IP-specific tables: Each IP gets its own table (e.g., `ip_10_224_1_11` for SQLite or `ping_10_224_1_11` for PostgreSQL) to store ping results with delay, success status, and timestamp.
 
-### Suppressing PostgreSQL NOTICE Messages
-
-When using PostgreSQL, you might see NOTICE messages about existing tables. The application now automatically handles this by setting `client_min_messages` to WARNING by default if not specified in the connection string:
-
-```bash
-./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -P
-```
-
-Alternatively, you can still specify the parameter in your connection string:
-
-```bash
-./mping -d "host=localhost user=myuser password=mypass dbname=mydb client_min_messages=warning" -P
-```
-
-This will reduce the output to only show warnings and errors, making the output cleaner.
