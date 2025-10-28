@@ -18,6 +18,9 @@ public:
         int cleanupDays = -1;  // -1表示不执行清理
         int pingCount = 3;  // 默认发送3个包
         int timeoutSeconds = 3;  // 默认超时时间（秒）
+#ifdef USE_POSTGRESQL
+        bool usePostgreSQL = false;  // 是否使用PostgreSQL数据库
+#endif
     };
 
 private:

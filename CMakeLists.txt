@@ -20,11 +20,29 @@ endif()
 # Configure version header file
 configure_file(project_info.h.in project_info.h @ONLY)
 
+# 选项：是否启用PostgreSQL支持
+option(USE_POSTGRESQL "Use PostgreSQL database" OFF)
+
 # Find SQLite3 library
 find_package(SQLite3 REQUIRED)
+if(USE_POSTGRESQL)
+    find_package(PkgConfig REQUIRED)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(PQ REQUIRED libpq)
+    endif()
+endif()
 
 # Add executable
-add_executable(mping main.cpp database_manager.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+if(USE_POSTGRESQL)
+    add_executable(mping main.cpp database_manager.cpp database_manager_pg.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+else()
+    add_executable(mping main.cpp database_manager.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+endif()
+
+# Add test executable if PostgreSQL is enabled
+if(USE_POSTGRESQL)
+    add_executable(test_pg test_pg.cpp database_manager_pg.cpp utils.cpp)
+endif()
 
 # Include the directory where project_info.h is generated
 target_include_directories(mping PRIVATE ${CMAKE_BINARY_DIR})
@@ -41,6 +59,11 @@ target_compile_definitions(mping PRIVATE
     COMPILE_TIME="${COMPILE_TIME}"
 )
 
+# 如果启用PostgreSQL，添加相应的编译定义
+if(USE_POSTGRESQL)
+    target_compile_definitions(mping PRIVATE USE_POSTGRESQL)
+endif()
+
 # 设置优化标志
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(mping PRIVATE -O3)
@@ -48,9 +71,20 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(mping PRIVATE -g -O0)
 endif()
 
-# Link pthread and SQLite3 libraries
+# Link libraries
 find_package(Threads REQUIRED)
-target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3)
+if(USE_POSTGRESQL)
+    target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3 ${PQ_LDFLAGS})
+    target_include_directories(mping PRIVATE ${PQ_INCLUDE_DIRS})
+    target_compile_options(mping PRIVATE ${PQ_CFLAGS_OTHER})
+    
+    # Link libraries for test_pg
+    target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
+    target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
+    target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
+else()
+    target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3)
+endif()
 
 # Install rules
 install(TARGETS mping RUNTIME DESTINATION bin)

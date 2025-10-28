@@ -25,12 +25,15 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         {"count", required_argument, nullptr, 'n'},
         {"timeout", required_argument, nullptr, 't'},
         {"version", no_argument, nullptr, 'v'},
+#ifdef USE_POSTGRESQL
+        {"postgresql", no_argument, nullptr, 'P'},
+#endif
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::n:t:v", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::n:t:vP", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -89,6 +92,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     return false;
                 }
                 break;
+#ifdef USE_POSTGRESQL
+            case 'P':
+                config.usePostgreSQL = true;
+                break;
+#endif
             default:
                 std::cerr << "Invalid option. Use -h or --help for usage information.\n";
                 return false;
@@ -121,6 +129,9 @@ void ConfigManager::printUsage(const char* programName) {
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";
     std::cout << "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)\n";
+#ifdef USE_POSTGRESQL
+    std::cout << "  -P, --postgresql\tUse PostgreSQL database (requires -d with connection string)\n";
+#endif
     std::cout << "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.\n";
     std::cout << "Default filename: ip.txt\n";
     std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";

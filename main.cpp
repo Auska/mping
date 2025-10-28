@@ -1,5 +1,8 @@
 #include "config_manager.h"
 #include "database_manager.h"
+#ifdef USE_POSTGRESQL
+#include "database_manager_pg.h"
+#endif
 #include "ping_manager.h"
 #include "utils.h"
 #include <iostream>
@@ -25,13 +28,27 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-            DatabaseManager db(config.databasePath);
-            if (!db.initialize()) {
-                std::cerr << "Failed to initialize database" << std::endl;
-                return 1;
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                db.queryIPStatistics(config.queryIP);
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                db.queryIPStatistics(config.queryIP);
+#ifdef USE_POSTGRESQL
             }
-            
-            db.queryIPStatistics(config.queryIP);
+#endif
             return 0;
         }
         
@@ -42,13 +59,27 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-            DatabaseManager db(config.databasePath);
-            if (!db.initialize()) {
-                std::cerr << "Failed to initialize database" << std::endl;
-                return 1;
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                db.cleanupOldData(config.cleanupDays);
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                db.cleanupOldData(config.cleanupDays);
+#ifdef USE_POSTGRESQL
             }
-            
-            db.cleanupOldData(config.cleanupDays);
+#endif
             return 0;
         }
         
@@ -59,13 +90,27 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-            DatabaseManager db(config.databasePath);
-            if (!db.initialize()) {
-                std::cerr << "Failed to initialize database" << std::endl;
-                return 1;
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                db.queryConsecutiveFailures(config.consecutiveFailures);
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                db.queryConsecutiveFailures(config.consecutiveFailures);
+#ifdef USE_POSTGRESQL
             }
-            
-            db.queryConsecutiveFailures(config.consecutiveFailures);
+#endif
             return 0;
         }
         
@@ -78,12 +123,25 @@ int main(int argc, char* argv[]) {
         if (!config.filename.empty()) {
             hosts = readHostsFromFile(config.filename);
         } else if (config.enableDatabase) {
-            DatabaseManager db(config.databasePath);
-            if (!db.initialize()) {
-                std::cerr << "Failed to initialize database" << std::endl;
-                return 1;
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                hosts = db.getAllHosts();
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                hosts = db.getAllHosts();
+#ifdef USE_POSTGRESQL
             }
-            hosts = db.getAllHosts();
+#endif
         } else {
             // 默认从ip.txt文件读取
             hosts = readHostsFromFile("ip.txt");
@@ -102,24 +160,49 @@ int main(int argc, char* argv[]) {
         
         // 如果启用了数据库，则初始化数据库管理器并存储结果
         if (config.enableDatabase) {
-            DatabaseManager db(config.databasePath);
-            if (!db.initialize()) {
-                std::cerr << "Failed to initialize database" << std::endl;
-                return 1;
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                // 将结果转换为数据库所需的格式并批量插入
+                std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
+                dbResults.reserve(allResults.size());
+                
+                for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
+                    dbResults.emplace_back(ip, hostname, delay, result, timestamp);
+                }
+                
+                if (!db.insertPingResults(dbResults)) {
+                    std::cerr << "Failed to insert ping results into PostgreSQL database" << std::endl;
+                    return 1;
+                }
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                // 将结果转换为数据库所需的格式并批量插入
+                std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
+                dbResults.reserve(allResults.size());
+                
+                for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
+                    dbResults.emplace_back(ip, hostname, delay, result, timestamp);
+                }
+                
+                if (!db.insertPingResults(dbResults)) {
+                    std::cerr << "Failed to insert ping results into database" << std::endl;
+                    return 1;
+                }
+#ifdef USE_POSTGRESQL
             }
-            
-            // 将结果转换为数据库所需的格式并批量插入
-            std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
-            dbResults.reserve(allResults.size());
-            
-            for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
-                dbResults.emplace_back(ip, hostname, delay, result, timestamp);
-            }
-            
-            if (!db.insertPingResults(dbResults)) {
-                std::cerr << "Failed to insert ping results into database" << std::endl;
-                return 1;
-            }
+#endif
         }
         
         // 打印所有IP地址和结果（除非启用静默模式）

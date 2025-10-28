@@ -3,9 +3,16 @@ build/
 
 # Binary files
 mping
-*.db
+test_pg
 IFLOW.md
+*.db
 
 # IDE files
 *.swp
 *.swo
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
