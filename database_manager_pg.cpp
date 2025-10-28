@@ -83,6 +83,18 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
     
+    // 设置client_min_messages参数以抑制NOTICE消息
+    // 检查连接字符串中是否包含client_min_messages参数
+    if (connInfo.find("client_min_messages") == std::string::npos) {
+        PGresult* res = PQexec(conn, "SET client_min_messages TO WARNING;");
+        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+            std::cerr << "Failed to set client_min_messages: " << PQresultErrorMessage(res) << std::endl;
+            PQclear(res);
+            return false;
+        }
+        PQclear(res);
+    }
+    
     // 创建hosts表，用于存储IP地址与主机名的映射关系
     const char* createHostsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS hosts (
