@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
         }
         
         // 如果请求查询告警，则只显示告警信息，不执行ping操作
-        if (config.queryAlerts >= -1) {  // -1表示查询所有告警，>=0表示查询指定天数内的告警
+        if (config.queryAlerts >= -2) {  // -2表示启用告警查询（未指定天数），-1表示查询所有告警，>=0表示查询指定天数内的告警
             if (!config.enableDatabase) {
                 std::cerr << "Database must be enabled to query alerts. Use -d option to specify database path.\n";
                 return 1;
