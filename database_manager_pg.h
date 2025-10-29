@@ -21,7 +21,6 @@ public:
     bool insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp);
     bool insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
     void queryIPStatistics(const std::string& ip);
-    void queryConsecutiveFailures(int failureCount);
     void cleanupOldData(int days = 30);
     std::map<std::string, std::string> getAllHosts();
     

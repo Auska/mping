@@ -134,37 +134,6 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         
-        // 如果请求查询连续失败的主机，则只显示查询结果，不执行ping操作
-        if (config.consecutiveFailures >= 0) {
-            if (!config.enableDatabase) {
-                std::cerr << "Database must be enabled to query consecutive failures. Use -d option to specify database path.\n";
-                return 1;
-            }
-            
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
-                    return 1;
-                }
-                
-                db.queryConsecutiveFailures(config.consecutiveFailures);
-            } else {
-#endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize database" << std::endl;
-                    return 1;
-                }
-                
-                db.queryConsecutiveFailures(config.consecutiveFailures);
-#ifdef USE_POSTGRESQL
-            }
-#endif
-            return 0;
-        }
-        
         // 读取主机列表
         std::map<std::string, std::string> hosts;
         

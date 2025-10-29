@@ -14,7 +14,6 @@ public:
         std::string databasePath = "ping_monitor.db";
         bool silentMode = false;
         std::string queryIP = "";
-        int consecutiveFailures = -1;  // -1表示不查询连续失败
         int cleanupDays = -1;  // -1表示不执行清理
         bool queryAlerts = false;  // 是否查询告警
         int pingCount = 3;  // 默认发送3个包
