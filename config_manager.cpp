@@ -20,6 +20,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         {"file", required_argument, nullptr, 'f'},
         {"query", required_argument, nullptr, 'q'},
         {"consecutive-failures", required_argument, nullptr, 'c'},
+        {"alerts", no_argument, nullptr, 'a'},
         {"silent", no_argument, nullptr, 's'},
         {"cleanup", optional_argument, nullptr, 'C'},
         {"count", required_argument, nullptr, 'n'},
@@ -33,7 +34,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:c:sC::n:t:vP", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:c:asC::n:t:vP", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -59,6 +60,9 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     std::cerr << "Invalid value for consecutive failures: " << optarg << std::endl;
                     return false;
                 }
+                break;
+            case 'a':
+                config.queryAlerts = true;
                 break;
             case 's':
                 config.silentMode = true;
@@ -125,6 +129,7 @@ void ConfigManager::printUsage(const char* programName) {
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
     std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
     std::cout << "  -c, --consecutive-failures <n>\tQuery hosts with n consecutive failures (requires -d)\n";
+    std::cout << "  -a, --alerts\t\tQuery active alerts (requires -d)\n";
     std::cout << "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)\n";
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";

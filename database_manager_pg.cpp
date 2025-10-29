@@ -110,6 +110,20 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
     
+    // 创建alerts表，用于存储告警信息
+    const char* createAlertsTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS alerts (
+            ip INET PRIMARY KEY,
+            hostname TEXT,
+            created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    )";
+    
+    if (!executeQuery(createAlertsTableSQL)) {
+        std::cerr << "Failed to create alerts table" << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
@@ -550,4 +564,76 @@ std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
     
     PQclear(res);
     return hosts;
+}
+
+bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostname) {
+    if (!conn) {
+        std::cerr << "Database not initialized" << std::endl;
+        return false;
+    }
+    
+    // 验证IP地址格式
+    if (!isValidIP(ip)) {
+        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        return false;
+    }
+    
+    // 插入或更新告警记录
+    std::ostringstream alertSQLStream;
+    alertSQLStream << "INSERT INTO alerts (ip, hostname) VALUES (" 
+                   << escapeString(ip) << ", " << escapeString(hostname) 
+                   << ") ON CONFLICT (ip) DO UPDATE SET hostname = EXCLUDED.hostname;";
+    
+    return executeQuery(alertSQLStream.str());
+}
+
+bool DatabaseManagerPG::removeAlert(const std::string& ip) {
+    if (!conn) {
+        std::cerr << "Database not initialized" << std::endl;
+        return false;
+    }
+    
+    // 验证IP地址格式
+    if (!isValidIP(ip)) {
+        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        return false;
+    }
+    
+    // 从告警表中删除记录
+    std::ostringstream alertSQLStream;
+    alertSQLStream << "DELETE FROM alerts WHERE ip = " << escapeString(ip) << ";";
+    
+    return executeQuery(alertSQLStream.str());
+}
+
+std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts() {
+    std::vector<std::tuple<std::string, std::string, std::string>> alerts;
+    
+    if (!conn) {
+        std::cerr << "Database not initialized" << std::endl;
+        return alerts;
+    }
+    
+    // 查询所有活动告警
+    PGresult* res = executeQueryWithResult("SELECT ip, hostname, created_time FROM alerts;");
+    if (!res) {
+        std::cerr << "Failed to query alerts" << std::endl;
+        return alerts;
+    }
+    
+    for (int row = 0; row < PQntuples(res); row++) {
+        char* ip = PQgetvalue(res, row, 0);
+        char* hostname = PQgetvalue(res, row, 1);
+        char* created_time = PQgetvalue(res, row, 2);
+        
+        if (ip) {
+            std::string ipStr = ip ? ip : "";
+            std::string hostnameStr = hostname ? hostname : "";
+            std::string timeStr = created_time ? created_time : "";
+            alerts.emplace_back(ipStr, hostnameStr, timeStr);
+        }
+    }
+    
+    PQclear(res);
+    return alerts;
 }

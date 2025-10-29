@@ -25,6 +25,11 @@ public:
     void cleanupOldData(int days = 30);
     std::map<std::string, std::string> getAllHosts();
     
+    // 告警表相关方法
+    bool addAlert(const std::string& ip, const std::string& hostname);
+    bool removeAlert(const std::string& ip);
+    std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts();  // 返回IP, hostname, created_time
+    
 private:
     bool createIPTable(const std::string& ip);
     std::string ipToTableName(const std::string& ip);

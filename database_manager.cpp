@@ -77,6 +77,28 @@ bool DatabaseManager::initialize() {
         return false;
     }
     
+    // 创建alerts表，用于存储告警信息
+    const char* createAlertsTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS alerts (
+            ip TEXT PRIMARY KEY,
+            hostname TEXT,
+            created_time TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    )";
+    
+    rc = sqlite3_exec(db, createAlertsTableSQL, 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::string errorMsg = "SQL error creating alerts table: ";
+        if (errMsg) {
+            errorMsg += errMsg;
+            sqlite3_free(errMsg);
+        } else {
+            errorMsg += "Unknown error";
+        }
+        std::cerr << errorMsg << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
@@ -629,4 +651,115 @@ std::map<std::string, std::string> DatabaseManager::getAllHosts() {
     
     sqlite3_finalize(stmt);
     return hosts;
+}
+
+bool DatabaseManager::addAlert(const std::string& ip, const std::string& hostname) {
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return false;
+    }
+    
+    // 验证IP地址格式
+    if (!isValidIP(ip)) {
+        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        return false;
+    }
+    
+    // 插入或更新告警记录
+    const char* insertAlertSQL = R"(
+        INSERT INTO alerts (ip, hostname)
+        VALUES (?, ?)
+        ON CONFLICT(ip) DO UPDATE SET
+        hostname = excluded.hostname;
+    )";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, insertAlertSQL, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare alert insert statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        std::cerr << "Failed to execute alert insert statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+bool DatabaseManager::removeAlert(const std::string& ip) {
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return false;
+    }
+    
+    // 验证IP地址格式
+    if (!isValidIP(ip)) {
+        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        return false;
+    }
+    
+    // 从告警表中删除记录
+    const char* deleteAlertSQL = "DELETE FROM alerts WHERE ip = ?;";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, deleteAlertSQL, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare alert delete statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    if (rc != SQLITE_DONE) {
+        std::cerr << "Failed to execute alert delete statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::getActiveAlerts() {
+    std::vector<std::tuple<std::string, std::string, std::string>> alerts;
+    
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return alerts;
+    }
+    
+    // 查询所有活动告警
+    const char* selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts;";
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, selectAlertsSQL, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare alerts query statement: " << sqlite3_errmsg(db) << std::endl;
+        return alerts;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* ip = (const char*)sqlite3_column_text(stmt, 0);
+        const char* hostname = (const char*)sqlite3_column_text(stmt, 1);
+        const char* created_time = (const char*)sqlite3_column_text(stmt, 2);
+        
+        if (ip) {
+            std::string ipStr = ip ? ip : "";
+            std::string hostnameStr = hostname ? hostname : "";
+            std::string timeStr = created_time ? created_time : "";
+            alerts.emplace_back(ipStr, hostnameStr, timeStr);
+        }
+    }
+    
+    sqlite3_finalize(stmt);
+    return alerts;
 }

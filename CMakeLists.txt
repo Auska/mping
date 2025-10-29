@@ -39,7 +39,9 @@ else()
     add_executable(mping main.cpp database_manager.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
 endif()
 
-# Add test executable if PostgreSQL is enabled
+# Add test executables
+add_executable(test_sqlite_alerts test_sqlite_alerts.cpp database_manager.cpp utils.cpp)
+
 if(USE_POSTGRESQL)
     add_executable(test_pg test_pg.cpp database_manager_pg.cpp utils.cpp)
 endif()
@@ -78,12 +80,14 @@ if(USE_POSTGRESQL)
     target_include_directories(mping PRIVATE ${PQ_INCLUDE_DIRS})
     target_compile_options(mping PRIVATE ${PQ_CFLAGS_OTHER})
     
-    # Link libraries for test_pg
+    # Link libraries for test executables
+    target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
     target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
     target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
     target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
 else()
     target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3)
+    target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
 endif()
 
 # Install rules

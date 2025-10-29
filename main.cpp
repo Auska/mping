@@ -83,6 +83,57 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         
+        // 如果请求查询告警，则只显示告警信息，不执行ping操作
+        if (config.queryAlerts) {
+            if (!config.enableDatabase) {
+                std::cerr << "Database must be enabled to query alerts. Use -d option to specify database path.\n";
+                return 1;
+            }
+            
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                auto alerts = db.getActiveAlerts();
+                if (alerts.empty()) {
+                    std::cout << "No active alerts." << std::endl;
+                } else {
+                    std::cout << "Active alerts:" << std::endl;
+                    std::cout << "IP Address\tHostname\tCreated Time" << std::endl;
+                    std::cout << "------------------------------------------------" << std::endl;
+                    for (const auto& [ip, hostname, createdTime] : alerts) {
+                        std::cout << ip << "\t" << hostname << "\t" << createdTime << std::endl;
+                    }
+                }
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                auto alerts = db.getActiveAlerts();
+                if (alerts.empty()) {
+                    std::cout << "No active alerts." << std::endl;
+                } else {
+                    std::cout << "Active alerts:" << std::endl;
+                    std::cout << "IP Address\tHostname\tCreated Time" << std::endl;
+                    std::cout << "------------------------------------------------" << std::endl;
+                    for (const auto& [ip, hostname, createdTime] : alerts) {
+                        std::cout << ip << "\t" << hostname << "\t" << createdTime << std::endl;
+                    }
+                }
+#ifdef USE_POSTGRESQL
+            }
+#endif
+            return 0;
+        }
+        
         // 如果请求查询连续失败的主机，则只显示查询结果，不执行ping操作
         if (config.consecutiveFailures >= 0) {
             if (!config.enableDatabase) {
@@ -199,6 +250,53 @@ int main(int argc, char* argv[]) {
                 if (!db.insertPingResults(dbResults)) {
                     std::cerr << "Failed to insert ping results into database" << std::endl;
                     return 1;
+                }
+#ifdef USE_POSTGRESQL
+            }
+#endif
+        }
+        
+        // 处理告警逻辑（仅在启用数据库时）
+        if (config.enableDatabase) {
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                // 处理告警：主机状态不通时记录到告警表，主机状态正常时从告警表移除
+                for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
+                    if (!success) {
+                        // 主机状态不通，添加到告警表
+                        if (!db.addAlert(ip, hostname)) {
+                            std::cerr << "Failed to add alert for IP: " << ip << std::endl;
+                        }
+                    } else {
+                        // 主机状态正常，从告警表移除
+                        db.removeAlert(ip);
+                    }
+                }
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                // 处理告警：主机状态不通时记录到告警表，主机状态正常时从告警表移除
+                for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
+                    if (!success) {
+                        // 主机状态不通，添加到告警表
+                        if (!db.addAlert(ip, hostname)) {
+                            std::cerr << "Failed to add alert for IP: " << ip << std::endl;
+                        }
+                    } else {
+                        // 主机状态正常，从告警表移除
+                        db.removeAlert(ip);
+                    }
                 }
 #ifdef USE_POSTGRESQL
             }
