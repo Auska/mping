@@ -82,7 +82,7 @@ bool DatabaseManager::initialize() {
         CREATE TABLE IF NOT EXISTS alerts (
             ip TEXT PRIMARY KEY,
             hostname TEXT,
-            created_time TEXT DEFAULT CURRENT_TIMESTAMP
+            created_time TEXT DEFAULT (datetime('now', 'localtime'))
         );
     )";
     
@@ -670,7 +670,8 @@ bool DatabaseManager::addAlert(const std::string& ip, const std::string& hostnam
         INSERT INTO alerts (ip, hostname)
         VALUES (?, ?)
         ON CONFLICT(ip) DO UPDATE SET
-        hostname = excluded.hostname;
+        hostname = excluded.hostname,
+        created_time = datetime('now', 'localtime');
     )";
     
     sqlite3_stmt* stmt;

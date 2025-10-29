@@ -582,7 +582,7 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
     std::ostringstream alertSQLStream;
     alertSQLStream << "INSERT INTO alerts (ip, hostname) VALUES (" 
                    << escapeString(ip) << ", " << escapeString(hostname) 
-                   << ") ON CONFLICT (ip) DO UPDATE SET hostname = EXCLUDED.hostname;";
+                   << ") ON CONFLICT (ip) DO UPDATE SET hostname = EXCLUDED.hostname, created_time = NOW();";
     
     return executeQuery(alertSQLStream.str());
 }
