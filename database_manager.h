@@ -28,6 +28,7 @@ public:
     bool addAlert(const std::string& ip, const std::string& hostname);
     bool removeAlert(const std::string& ip);
     std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts();  // 返回IP, hostname, created_time
+    std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts(int days);  // 返回指定天数内的告警
     
 private:
     bool createIPTable(const std::string& ip);

@@ -638,6 +638,10 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
 }
 
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::getActiveAlerts() {
+    return getActiveAlerts(-1);  // -1表示获取所有告警
+}
+
+std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::getActiveAlerts(int days) {
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
     
     if (!db) {
@@ -645,11 +649,20 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
         return alerts;
     }
     
-    // 查询所有活动告警
-    const char* selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts;";
+    // 查询活动告警
+    std::string selectAlertsSQL;
+    if (days >= 0) {
+        // 查询指定天数内的告警
+        std::ostringstream sqlStream;
+        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= datetime('now', '-" << days << " days');";
+        selectAlertsSQL = sqlStream.str();
+    } else {
+        // 查询所有告警
+        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts;";
+    }
     
     sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, selectAlertsSQL, -1, &stmt, 0);
+    int rc = sqlite3_prepare_v2(db, selectAlertsSQL.c_str(), -1, &stmt, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare alerts query statement: " << sqlite3_errmsg(db) << std::endl;
         return alerts;

@@ -31,6 +31,7 @@ The project follows a modular design with separated concerns:
 - `-d`, `--database`: Enable database logging and specify database path/connection string
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
 - `-q`, `--query`: Query statistics for a specific IP address (requires -d)
+- `-a`, `--alerts [n]`: Query active alerts (requires -d, n: days, default: all)
 - `-C`, `--cleanup [n]`: Clean up data older than n days (requires -d, default: 30)
 - `-s`, `--silent`: Silent mode, suppress output
 - `-P`, `--postgresql`: Use PostgreSQL database (requires -d with connection string)
@@ -90,6 +91,15 @@ The project consists of the following source files:
 
 # Query statistics for a specific IP
 ./mping -d ping_monitor.db -q 10.224.1.11
+
+# Query all active alerts
+./mping -d ping_monitor.db -a
+
+# Query alerts within the last 7 days
+./mping -d ping_monitor.db -a 7
+
+# Query alerts within the last 30 days with PostgreSQL
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -P -a 30
 
 
 

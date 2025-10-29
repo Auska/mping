@@ -19,7 +19,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         {"database", required_argument, nullptr, 'd'},
         {"file", required_argument, nullptr, 'f'},
         {"query", required_argument, nullptr, 'q'},
-        {"alerts", no_argument, nullptr, 'a'},
+        {"alerts", optional_argument, nullptr, 'a'},
         {"silent", no_argument, nullptr, 's'},
         {"cleanup", optional_argument, nullptr, 'C'},
         {"count", required_argument, nullptr, 'n'},
@@ -33,7 +33,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:asC::n:t:vP", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:a::sC::n:t:vP", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -52,7 +52,20 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.queryIP = optarg;
                 break;
             case 'a':
-                config.queryAlerts = true;
+                config.queryAlerts = -2; // 特殊值表示已启用告警但未指定天数
+                // 如果提供了参数，解析天数值
+                if (optarg) {
+                    try {
+                        config.queryAlerts = std::stoi(optarg);
+                        if (config.queryAlerts < 0) {
+                            std::cerr << "Alert days must be a non-negative integer." << std::endl;
+                            return false;
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "Invalid value for alert days: " << optarg << std::endl;
+                        return false;
+                    }
+                }
                 break;
             case 's':
                 config.silentMode = true;
@@ -118,7 +131,7 @@ void ConfigManager::printUsage(const char* programName) {
     std::cout << "  -d, --database\tEnable database logging and specify database path\n";
     std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
     std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
-    std::cout << "  -a, --alerts\t\tQuery active alerts (requires -d)\n";
+    std::cout << "  -a, --alerts [n]\tQuery active alerts (requires -d, n: days, default: all)\n";
     std::cout << "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)\n";
     std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
     std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";

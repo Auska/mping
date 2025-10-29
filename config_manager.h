@@ -15,7 +15,7 @@ public:
         bool silentMode = false;
         std::string queryIP = "";
         int cleanupDays = -1;  // -1表示不执行清理
-        bool queryAlerts = false;  // 是否查询告警
+        int queryAlerts = -1;  // -1表示不查询告警，>=0表示查询指定天数内的告警
         int pingCount = 3;  // 默认发送3个包
         int timeoutSeconds = 3;  // 默认超时时间（秒）
 #ifdef USE_POSTGRESQL

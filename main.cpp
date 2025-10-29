@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
         }
         
         // 如果请求查询告警，则只显示告警信息，不执行ping操作
-        if (config.queryAlerts) {
+        if (config.queryAlerts >= -1) {  // -1表示查询所有告警，>=0表示查询指定天数内的告警
             if (!config.enableDatabase) {
                 std::cerr << "Database must be enabled to query alerts. Use -d option to specify database path.\n";
                 return 1;
@@ -98,11 +98,19 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
                 
-                auto alerts = db.getActiveAlerts();
+                auto alerts = db.getActiveAlerts(config.queryAlerts);
                 if (alerts.empty()) {
-                    std::cout << "No active alerts." << std::endl;
+                    if (config.queryAlerts >= 0) {
+                        std::cout << "No active alerts within the last " << config.queryAlerts << " days." << std::endl;
+                    } else {
+                        std::cout << "No active alerts." << std::endl;
+                    }
                 } else {
-                    std::cout << "Active alerts:" << std::endl;
+                    if (config.queryAlerts >= 0) {
+                        std::cout << "Active alerts within the last " << config.queryAlerts << " days:" << std::endl;
+                    } else {
+                        std::cout << "Active alerts:" << std::endl;
+                    }
                     std::cout << "IP Address\tHostname\tCreated Time" << std::endl;
                     std::cout << "------------------------------------------------" << std::endl;
                     for (const auto& [ip, hostname, createdTime] : alerts) {
@@ -117,11 +125,19 @@ int main(int argc, char* argv[]) {
                     return 1;
                 }
                 
-                auto alerts = db.getActiveAlerts();
+                auto alerts = db.getActiveAlerts(config.queryAlerts);
                 if (alerts.empty()) {
-                    std::cout << "No active alerts." << std::endl;
+                    if (config.queryAlerts >= 0) {
+                        std::cout << "No active alerts within the last " << config.queryAlerts << " days." << std::endl;
+                    } else {
+                        std::cout << "No active alerts." << std::endl;
+                    }
                 } else {
-                    std::cout << "Active alerts:" << std::endl;
+                    if (config.queryAlerts >= 0) {
+                        std::cout << "Active alerts within the last " << config.queryAlerts << " days:" << std::endl;
+                    } else {
+                        std::cout << "Active alerts:" << std::endl;
+                    }
                     std::cout << "IP Address\tHostname\tCreated Time" << std::endl;
                     std::cout << "------------------------------------------------" << std::endl;
                     for (const auto& [ip, hostname, createdTime] : alerts) {

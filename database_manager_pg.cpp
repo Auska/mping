@@ -520,6 +520,10 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
 }
 
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts() {
+    return getActiveAlerts(-1);  // -1表示获取所有告警
+}
+
+std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts(int days) {
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
     
     if (!conn) {
@@ -527,8 +531,19 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
         return alerts;
     }
     
-    // 查询所有活动告警
-    PGresult* res = executeQueryWithResult("SELECT ip, hostname, created_time FROM alerts;");
+    // 查询活动告警
+    std::string selectAlertsSQL;
+    if (days >= 0) {
+        // 查询指定天数内的告警
+        std::ostringstream sqlStream;
+        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - INTERVAL '" << days << " days';";
+        selectAlertsSQL = sqlStream.str();
+    } else {
+        // 查询所有告警
+        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts;";
+    }
+    
+    PGresult* res = executeQueryWithResult(selectAlertsSQL);
     if (!res) {
         std::cerr << "Failed to query alerts" << std::endl;
         return alerts;
