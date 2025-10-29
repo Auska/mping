@@ -42,6 +42,7 @@ endif()
 # Add test executables
 add_executable(test_sqlite_alerts test_sqlite_alerts.cpp database_manager.cpp utils.cpp)
 add_executable(test_timezone test_timezone.cpp database_manager.cpp utils.cpp)
+add_executable(test_alert_persistence test_alert_persistence.cpp database_manager.cpp utils.cpp)
 
 if(USE_POSTGRESQL)
     add_executable(test_pg test_pg.cpp database_manager_pg.cpp utils.cpp)
@@ -84,6 +85,7 @@ if(USE_POSTGRESQL)
     # Link libraries for test executables
     target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
     target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
+    target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
     target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
     target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
     target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
@@ -91,6 +93,7 @@ else()
     target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3)
     target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
     target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
+    target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
 endif()
 
 # Install rules

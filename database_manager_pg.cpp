@@ -115,7 +115,7 @@ bool DatabaseManagerPG::initialize() {
         CREATE TABLE IF NOT EXISTS alerts (
             ip INET PRIMARY KEY,
             hostname TEXT,
-            created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_time TIMESTAMP
         );
     )";
     
@@ -580,9 +580,9 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
     
     // 插入或更新告警记录
     std::ostringstream alertSQLStream;
-    alertSQLStream << "INSERT INTO alerts (ip, hostname) VALUES (" 
-                   << escapeString(ip) << ", " << escapeString(hostname) 
-                   << ") ON CONFLICT (ip) DO UPDATE SET hostname = EXCLUDED.hostname, created_time = NOW();";
+    alertSQLStream << "INSERT INTO alerts (ip, hostname, created_time) VALUES (" 
+                   << escapeString(ip) << ", " << escapeString(hostname) << ", NOW())"
+                   << " ON CONFLICT (ip) DO NOTHING;";
     
     return executeQuery(alertSQLStream.str());
 }
