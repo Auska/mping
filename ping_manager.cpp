@@ -1,9 +1,11 @@
 #include "ping_manager.h"
 #include <iostream>
+#include <print>
 #include <algorithm>
 #include <vector>
 #include <atomic>
 #include <stdexcept>
+#include <ranges>
 
 // Ping工作函数
 std::tuple<std::string, std::string, bool, short, std::string> pingHost(const std::string& ip, const std::string& hostname, int pingCount, int timeoutSeconds) {
@@ -13,8 +15,8 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
     
     for (int i = 0; i < pingCount; ++i) {
         // 使用配置的超时时间
-        std::string command = "timeout " + std::to_string(timeoutSeconds + 2) + " ping -c 1 -W " + 
-                             std::to_string(timeoutSeconds) + " " + ip + " > /dev/null 2>&1";
+        std::string command = std::format("timeout {} ping -c 1 -W {} {} > /dev/null 2>&1", 
+                                         timeoutSeconds + 2, timeoutSeconds, ip);
         auto start = std::chrono::high_resolution_clock::now();
         int result = system(command.c_str());
         auto end = std::chrono::high_resolution_clock::now();
@@ -30,7 +32,7 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
     }
     
     // 取所有延迟中的最小值
-    short minDelay = *std::min_element(delays.begin(), delays.end());
+    short minDelay = *std::ranges::min_element(delays);
     
     // 获取当前时间戳
     auto now = std::chrono::system_clock::now();

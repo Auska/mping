@@ -1,5 +1,6 @@
 #include "database_manager.h"
 #include <iostream>
+#include <print>
 #include <sqlite3.h>
 #include <sstream>
 #include <algorithm>
@@ -44,12 +45,12 @@ bool DatabaseManager::initialize() {
         } else {
             errorMsg += "Unknown error";
         }
-        std::cerr << errorMsg << std::endl;
+        std::println(std::cerr, "{}", errorMsg);
         return false;
     }
     
     if (!db) {
-        std::cerr << "Database handle is null after opening" << std::endl;
+        std::println(std::cerr, "Database handle is null after opening");
         return false;
     }
     
@@ -73,7 +74,7 @@ bool DatabaseManager::initialize() {
         } else {
             errorMsg += "Unknown error";
         }
-        std::cerr << errorMsg << std::endl;
+        std::println(std::cerr, "{}", errorMsg);
         return false;
     }
     
@@ -95,7 +96,7 @@ bool DatabaseManager::initialize() {
         } else {
             errorMsg += "Unknown error";
         }
-        std::cerr << errorMsg << std::endl;
+        std::println(std::cerr, "{}", errorMsg);
         return false;
     }
     

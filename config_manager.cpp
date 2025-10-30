@@ -1,6 +1,7 @@
 #include "config_manager.h"
 #include "version_info.h"
 #include <iostream>
+#include <print>
 #include <unistd.h>
 #include <stdexcept>
 
@@ -59,11 +60,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     try {
                         config.queryAlerts = std::stoi(optarg);
                         if (config.queryAlerts < 0) {
-                            std::cerr << "Alert days must be a non-negative integer." << std::endl;
+                            std::println(std::cerr, "Alert days must be a non-negative integer.");
                             return false;
                         }
                     } catch (const std::exception& e) {
-                        std::cerr << "Invalid value for alert days: " << optarg << std::endl;
+                        std::println(std::cerr, "Invalid value for alert days: {}", optarg);
                         return false;
                     }
                 }
@@ -75,11 +76,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     try {
                         config.queryRecoveryRecords = std::stoi(optarg);
                         if (config.queryRecoveryRecords < 0) {
-                            std::cerr << "Recovery record days must be a non-negative integer." << std::endl;
+                            std::println(std::cerr, "Recovery record days must be a non-negative integer.");
                             return false;
                         }
                     } catch (const std::exception& e) {
-                        std::cerr << "Invalid value for recovery record days: " << optarg << std::endl;
+                        std::println(std::cerr, "Invalid value for recovery record days: {}", optarg);
                         return false;
                     }
                 }
@@ -96,11 +97,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 try {
                     config.pingCount = std::stoi(optarg);
                     if (config.pingCount <= 0) {
-                        std::cerr << "Ping count must be a positive integer." << std::endl;
+                        std::println(std::cerr, "Ping count must be a positive integer.");
                         return false;
                     }
                 } catch (const std::exception& e) {
-                    std::cerr << "Invalid value for ping count: " << optarg << std::endl;
+                    std::println(std::cerr, "Invalid value for ping count: {}", optarg);
                     return false;
                 }
                 break;
@@ -108,11 +109,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 try {
                     config.timeoutSeconds = std::stoi(optarg);
                     if (config.timeoutSeconds <= 0) {
-                        std::cerr << "Timeout must be a positive integer." << std::endl;
+                        std::println(std::cerr, "Timeout must be a positive integer.");
                         return false;
                     }
                 } catch (const std::exception& e) {
-                    std::cerr << "Invalid value for timeout: " << optarg << std::endl;
+                    std::println(std::cerr, "Invalid value for timeout: {}", optarg);
                     return false;
                 }
                 break;
@@ -122,7 +123,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 break;
 #endif
             default:
-                std::cerr << "Invalid option. Use -h or --help for usage information.\n";
+                std::println(std::cerr, "Invalid option. Use -h or --help for usage information.");
                 return false;
         }
     }
@@ -141,23 +142,23 @@ const ConfigManager::Config& ConfigManager::getConfig() const {
 }
 
 void ConfigManager::printUsage(const char* programName) {
-    std::cout << "Usage: " << programName << " [options] [filename]\n";
-    std::cout << "Options:\n";
-    std::cout << "  -h, --help\t\tShow this help message\n";
-    std::cout << "  -v, --version\t\tShow version information\n";
-    std::cout << "  -d, --database\tEnable database logging and specify database path\n";
-    std::cout << "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)\n";
-    std::cout << "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)\n";
-    std::cout << "  -a, --alerts [n]\tQuery active alerts (requires -d, n: days, default: all)\n";
-    std::cout << "  -r, --recovery [n]\tQuery recovery records (requires -d, n: days, default: all)\n";
-    std::cout << "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)\n";
-    std::cout << "  -s, --silent\t\tSilent mode, suppress output\n";
-    std::cout << "  -n, --count <n>\tNumber of ping packets to send (default: 3)\n";
-    std::cout << "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)\n";
+    std::println(std::cout, "Usage: {} [options] [filename]", programName);
+    std::println(std::cout, "Options:");
+    std::println(std::cout, "  -h, --help\t\tShow this help message");
+    std::println(std::cout, "  -v, --version\t\tShow version information");
+    std::println(std::cout, "  -d, --database\tEnable database logging and specify database path");
+    std::println(std::cout, "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)");
+    std::println(std::cout, "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)");
+    std::println(std::cout, "  -a, --alerts [n]\tQuery active alerts (requires -d, n: days, default: all)");
+    std::println(std::cout, "  -r, --recovery [n]\tQuery recovery records (requires -d, n: days, default: all)");
+    std::println(std::cout, "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)");
+    std::println(std::cout, "  -s, --silent\t\tSilent mode, suppress output");
+    std::println(std::cout, "  -n, --count <n>\tNumber of ping packets to send (default: 3)");
+    std::println(std::cout, "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)");
 #ifdef USE_POSTGRESQL
-    std::cout << "  -P, --postgresql\tUse PostgreSQL database (requires -d with connection string)\n";
+    std::println(std::cout, "  -P, --postgresql\tUse PostgreSQL database (requires -d with connection string)");
 #endif
-    std::cout << "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.\n";
-    std::cout << "Default filename: ip.txt\n";
-    std::cout << "Default behavior: Show all hosts with status (IP, hostname, status, delay)\n";
+    std::println(std::cout, "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.");
+    std::println(std::cout, "Default filename: ip.txt");
+    std::println(std::cout, "Default behavior: Show all hosts with status (IP, hostname, status, delay)");
 }

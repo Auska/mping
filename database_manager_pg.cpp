@@ -1,5 +1,6 @@
 #include "database_manager_pg.h"
 #include <iostream>
+#include <print>
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -44,34 +45,32 @@ std::string DatabaseManagerPG::escapeString(const std::string& str) {
 
 bool DatabaseManagerPG::executeQuery(const std::string& query) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return false;
     }
     
     PGresult* res = PQexec(conn, query.c_str());
     if (PQresultStatus(res) != PGRES_COMMAND_OK && PQresultStatus(res) != PGRES_TUPLES_OK) {
-        std::cerr << "Query failed: " << PQresultErrorMessage(res) << std::endl;
+        std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
         return false;
     }
-    
     PQclear(res);
     return true;
 }
 
 PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return nullptr;
     }
     
     PGresult* res = PQexec(conn, query.c_str());
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        std::cerr << "Query failed: " << PQresultErrorMessage(res) << std::endl;
+        std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
         return nullptr;
     }
-    
     return res;
 }
 
@@ -79,7 +78,7 @@ bool DatabaseManagerPG::initialize() {
     conn = PQconnectdb(connInfo.c_str());
     
     if (PQstatus(conn) != CONNECTION_OK) {
-        std::cerr << "Failed to connect to database: " << PQerrorMessage(conn) << std::endl;
+        std::println(std::cerr, "Failed to connect to database: {}", PQerrorMessage(conn));
         return false;
     }
     
@@ -88,7 +87,7 @@ bool DatabaseManagerPG::initialize() {
     if (connInfo.find("client_min_messages") == std::string::npos) {
         PGresult* res = PQexec(conn, "SET client_min_messages TO WARNING;");
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::cerr << "Failed to set client_min_messages: " << PQresultErrorMessage(res) << std::endl;
+            std::println(std::cerr, "Failed to set client_min_messages: {}", PQresultErrorMessage(res));
             PQclear(res);
             return false;
         }
@@ -98,7 +97,7 @@ bool DatabaseManagerPG::initialize() {
     // 创建hosts表，用于存储IP地址与主机名的映射关系
     const char* createHostsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS hosts (
-            ip INET PRIMARY KEY,
+            ip TEXT PRIMARY KEY,
             hostname TEXT,
             created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_seen TIMESTAMP
@@ -106,37 +105,37 @@ bool DatabaseManagerPG::initialize() {
     )";
     
     if (!executeQuery(createHostsTableSQL)) {
-        std::cerr << "Failed to create hosts table" << std::endl;
+        std::println(std::cerr, "Failed to create hosts table");
         return false;
     }
     
     // 创建alerts表，用于存储告警信息
     const char* createAlertsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS alerts (
-            ip INET PRIMARY KEY,
+            ip TEXT PRIMARY KEY,
             hostname TEXT,
             created_time TIMESTAMP
         );
     )";
     
     if (!executeQuery(createAlertsTableSQL)) {
-        std::cerr << "Failed to create alerts table" << std::endl;
+        std::println(std::cerr, "Failed to create alerts table");
         return false;
     }
     
-    // 创建recovery_records表，用于存储已恢复主机的记录
-    const char* createRecoveryTableSQL = R"(
+    // 创建recovery_records表，用于存储恢复记录
+    const char* createRecoveryRecordsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS recovery_records (
             id SERIAL PRIMARY KEY,
-            ip INET,
+            ip TEXT,
             hostname TEXT,
             alert_time TIMESTAMP,
-            recovery_time TIMESTAMP DEFAULT NOW()
+            recovery_time TIMESTAMP
         );
     )";
     
-    if (!executeQuery(createRecoveryTableSQL)) {
-        std::cerr << "Failed to create recovery_records table" << std::endl;
+    if (!executeQuery(createRecoveryRecordsTableSQL)) {
+        std::println(std::cerr, "Failed to create recovery_records table");
         return false;
     }
     

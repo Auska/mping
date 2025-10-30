@@ -6,7 +6,7 @@ set(PROJECT_DESCRIPTION "Multi-host Ping Tool")
 set(PROJECT_HOMEPAGE_URL "https://github.com/Auska/mping")
 
 # 设置C++标准
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 设置编译时间

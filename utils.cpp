@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <stdexcept>
+#include <print>
 
 std::map<std::string, std::string> readHostsFromFile(const std::string& filename) {
     std::map<std::string, std::string> hosts;
@@ -11,7 +12,7 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
     std::ifstream file(filename);
     
     if (!file.is_open()) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
+        std::println(std::cerr, "Failed to open file: {}", filename);
         return hosts;
     }
     
@@ -30,7 +31,7 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
                 if (iss >> ip >> hostname) {
                     hosts[ip] = hostname;
                 } else {
-                    std::cerr << "Warning: Invalid format on line " << lineNumber << " in file " << filename << std::endl;
+                    std::println(std::cerr, "Warning: Invalid format on line {} in file {}", lineNumber, filename);
                 }
             }
         }

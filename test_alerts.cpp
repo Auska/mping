@@ -1,5 +1,6 @@
 #include "database_manager_pg.h"
 #include <iostream>
+#include <print>
 #include <cassert>
 #include <vector>
 #include <tuple>
@@ -12,47 +13,47 @@ int main() {
         DatabaseManagerPG db(connStr);
         
         if (!db.initialize()) {
-            std::cerr << "Failed to initialize database" << std::endl;
+            std::println(std::cerr, "Failed to initialize database");
             return 1;
         }
         
-        std::cout << "Database initialized successfully" << std::endl;
+        std::println(std::cout, "Database initialized successfully");
         
         // 测试添加告警
-        std::cout << "Testing addAlert..." << std::endl;
+        std::println(std::cout, "Testing addAlert...");
         bool addResult = db.addAlert("192.168.1.99", "TestHost");
         if (addResult) {
-            std::cout << "Successfully added alert for 192.168.1.99" << std::endl;
+            std::println(std::cout, "Successfully added alert for 192.168.1.99");
         } else {
-            std::cout << "Failed to add alert" << std::endl;
+            std::println(std::cout, "Failed to add alert");
         }
         
         // 测试查询告警
-        std::cout << "Testing getActiveAlerts..." << std::endl;
+        std::println(std::cout, "Testing getActiveAlerts...");
         auto alerts = db.getActiveAlerts();
-        std::cout << "Found " << alerts.size() << " active alerts" << std::endl;
+        std::println(std::cout, "Found {} active alerts", alerts.size());
         
         for (const auto& [ip, hostname, createdTime] : alerts) {
-            std::cout << "Alert: " << ip << " - " << hostname << " - " << createdTime << std::endl;
+            std::println(std::cout, "Alert: {} - {} - {}", ip, hostname, createdTime);
         }
         
         // 测试删除告警
-        std::cout << "Testing removeAlert..." << std::endl;
+        std::println(std::cout, "Testing removeAlert...");
         bool removeResult = db.removeAlert("192.168.1.99");
         if (removeResult) {
-            std::cout << "Successfully removed alert for 192.168.1.99" << std::endl;
+            std::println(std::cout, "Successfully removed alert for 192.168.1.99");
         } else {
-            std::cout << "Failed to remove alert" << std::endl;
+            std::println(std::cout, "Failed to remove alert");
         }
         
         // 再次查询确认删除
         alerts = db.getActiveAlerts();
-        std::cout << "After removal, found " << alerts.size() << " active alerts" << std::endl;
+        std::println(std::cout, "After removal, found {} active alerts", alerts.size());
         
-        std::cout << "All tests completed successfully!" << std::endl;
+        std::println(std::cout, "All tests completed successfully!");
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception: " << e.what() << std::endl;
+        std::println(std::cerr, "Exception: {}", e.what());
         return 1;
     }
     
