@@ -661,10 +661,6 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
     return true;
 }
 
-std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::getActiveAlerts() {
-    return getActiveAlerts(-1);  // -1表示获取所有告警
-}
-
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::getActiveAlerts(int days) {
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
     
@@ -708,10 +704,6 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     sqlite3_finalize(stmt);
     return alerts;
 }
-std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManager::getRecoveryRecords() {
-    return getRecoveryRecords(-1);  // -1表示获取所有恢复记录
-}
-
 std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManager::getRecoveryRecords(int days) {
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
     
