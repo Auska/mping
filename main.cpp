@@ -12,6 +12,151 @@
 #include <map>
 #include <exception>
 
+// 模板函数：处理数据库操作的通用模式
+template<typename DatabaseType>
+bool initializeDatabase(const std::string& databasePath, DatabaseType& db) {
+    if (!db.initialize()) {
+        std::println(std::cerr, "Failed to initialize database");
+        return false;
+    }
+    return true;
+}
+
+// 模板函数：查询IP统计信息
+template<typename DatabaseType>
+void queryIPStatistics(const std::string& databasePath, const std::string& queryIP) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return;
+    }
+    db.queryIPStatistics(queryIP);
+}
+
+// 模板函数：清理旧数据
+template<typename DatabaseType>
+void cleanupOldData(const std::string& databasePath, int cleanupDays) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return;
+    }
+    db.cleanupOldData(cleanupDays);
+}
+
+// 模板函数：查询活动告警
+template<typename DatabaseType>
+void queryActiveAlerts(const std::string& databasePath, int queryAlerts) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return;
+    }
+    
+    auto alerts = db.getActiveAlerts(queryAlerts);
+    if (alerts.empty()) {
+        if (queryAlerts >= 0) {
+            std::println(std::cout, "No active alerts within the last {} days.", queryAlerts);
+        } else {
+            std::println(std::cout, "No active alerts.");
+        }
+    } else {
+        if (queryAlerts >= 0) {
+            std::println(std::cout, "Active alerts within the last {} days:", queryAlerts);
+        } else {
+            std::println(std::cout, "Active alerts:");
+        }
+        std::println(std::cout, "IP Address\tHostname\tCreated Time");
+        std::println(std::cout, "------------------------------------------------");
+        for (const auto& [ip, hostname, createdTime] : alerts) {
+            std::println(std::cout, "{}\t{}\t{}", ip, hostname, createdTime);
+        }
+    }
+}
+
+// 模板函数：查询恢复记录
+template<typename DatabaseType>
+void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryRecords) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return;
+    }
+    
+    auto records = db.getRecoveryRecords(queryRecoveryRecords);
+    if (records.empty()) {
+        if (queryRecoveryRecords >= 0) {
+            std::println(std::cout, "No recovery records within the last {} days.", queryRecoveryRecords);
+        } else {
+            std::println(std::cout, "No recovery records.");
+        }
+    } else {
+        if (queryRecoveryRecords >= 0) {
+            std::println(std::cout, "Recovery records within the last {} days:", queryRecoveryRecords);
+        } else {
+            std::println(std::cout, "Recovery records:");
+        }
+        std::println(std::cout, "ID\tIP Address\tHostname\tAlert Time\t\tRecovery Time");
+        std::println(std::cout, "------------------------------------------------------------------------------------------------");
+        for (const auto& [id, ip, hostname, alertTime, recoveryTime] : records) {
+            std::println(std::cout, "{}\t{}\t\t{}\t\t{}\t{}", id, ip, hostname, alertTime, recoveryTime);
+        }
+    }
+}
+
+// 模板函数：获取所有主机
+template<typename DatabaseType>
+std::map<std::string, std::string> getAllHosts(const std::string& databasePath) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return {};
+    }
+    return db.getAllHosts();
+}
+
+// 模板函数：插入ping结果
+template<typename DatabaseType>
+bool insertPingResults(const std::string& databasePath, 
+                      const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return false;
+    }
+    
+    // 将结果转换为数据库所需的格式并批量插入
+    std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
+    dbResults.reserve(allResults.size());
+    
+    for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
+        dbResults.emplace_back(ip, hostname, delay, result, timestamp);
+    }
+    
+    return db.insertPingResults(dbResults);
+}
+
+// 模板函数：处理告警逻辑
+template<typename DatabaseType>
+bool processAlerts(const std::string& databasePath,
+                  const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults) {
+    DatabaseType db(databasePath);
+    if (!initializeDatabase(databasePath, db)) {
+        return false;
+    }
+    
+    // 处理告警：主机状态不通时记录到告警表，主机状态正常时从告警表移除
+    bool success = true;
+    for (const auto& [ip, hostname, successFlag, delay, timestamp] : allResults) {
+        if (!successFlag) {
+            // 主机状态不通，添加到告警表
+            if (!db.addAlert(ip, hostname)) {
+                std::println(std::cerr, "Failed to add alert for IP: {}", ip);
+                success = false;
+            }
+        } else {
+            // 主机状态正常，从告警表移除
+            db.removeAlert(ip);
+        }
+    }
+    
+    return success;
+}
+
 int main(int argc, char* argv[]) {
     try {
         // 创建配置管理器并解析命令行参数
@@ -31,22 +176,10 @@ int main(int argc, char* argv[]) {
             
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize PostgreSQL database");
-                    return 1;
-                }
-                
-                db.queryIPStatistics(config.queryIP);
+                queryIPStatistics<DatabaseManagerPG>(config.databasePath, config.queryIP);
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize database");
-                    return 1;
-                }
-                
-                db.queryIPStatistics(config.queryIP);
+                queryIPStatistics<DatabaseManager>(config.databasePath, config.queryIP);
 #ifdef USE_POSTGRESQL
             }
 #endif
@@ -62,22 +195,10 @@ int main(int argc, char* argv[]) {
             
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
-                    return 1;
-                }
-                
-                db.cleanupOldData(config.cleanupDays);
+                cleanupOldData<DatabaseManagerPG>(config.databasePath, config.cleanupDays);
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize database" << std::endl;
-                    return 1;
-                }
-                
-                db.cleanupOldData(config.cleanupDays);
+                cleanupOldData<DatabaseManager>(config.databasePath, config.cleanupDays);
 #ifdef USE_POSTGRESQL
             }
 #endif
@@ -93,58 +214,10 @@ int main(int argc, char* argv[]) {
             
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize PostgreSQL database");
-                    return 1;
-                }
-                
-                auto alerts = db.getActiveAlerts(config.queryAlerts);
-                if (alerts.empty()) {
-                    if (config.queryAlerts >= 0) {
-                        std::println(std::cout, "No active alerts within the last {} days.", config.queryAlerts);
-                    } else {
-                        std::println(std::cout, "No active alerts.");
-                    }
-                } else {
-                    if (config.queryAlerts >= 0) {
-                        std::println(std::cout, "Active alerts within the last {} days:", config.queryAlerts);
-                    } else {
-                        std::println(std::cout, "Active alerts:");
-                    }
-                    std::println(std::cout, "IP Address\tHostname\tCreated Time");
-                    std::println(std::cout, "------------------------------------------------");
-                    for (const auto& [ip, hostname, createdTime] : alerts) {
-                        std::println(std::cout, "{}\t{}\t{}", ip, hostname, createdTime);
-                    }
-                }
+                queryActiveAlerts<DatabaseManagerPG>(config.databasePath, config.queryAlerts);
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize database");
-                    return 1;
-                }
-                
-                auto alerts = db.getActiveAlerts(config.queryAlerts);
-                if (alerts.empty()) {
-                    if (config.queryAlerts >= 0) {
-                        std::println(std::cout, "No active alerts within the last {} days.", config.queryAlerts);
-                    } else {
-                        std::println(std::cout, "No active alerts.");
-                    }
-                } else {
-                    if (config.queryAlerts >= 0) {
-                        std::println(std::cout, "Active alerts within the last {} days:", config.queryAlerts);
-                    } else {
-                        std::println(std::cout, "Active alerts:");
-                    }
-                    std::println(std::cout, "IP Address\tHostname\tCreated Time");
-                    std::println(std::cout, "------------------------------------------------");
-                    for (const auto& [ip, hostname, createdTime] : alerts) {
-                        std::println(std::cout, "{}\t{}\t{}", ip, hostname, createdTime);
-                    }
-                }
+                queryActiveAlerts<DatabaseManager>(config.databasePath, config.queryAlerts);
 #ifdef USE_POSTGRESQL
             }
 #endif
@@ -160,58 +233,10 @@ int main(int argc, char* argv[]) {
             
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize PostgreSQL database");
-                    return 1;
-                }
-                
-                auto records = db.getRecoveryRecords(config.queryRecoveryRecords);
-                if (records.empty()) {
-                    if (config.queryRecoveryRecords >= 0) {
-                        std::println(std::cout, "No recovery records within the last {} days.", config.queryRecoveryRecords);
-                    } else {
-                        std::println(std::cout, "No recovery records.");
-                    }
-                } else {
-                    if (config.queryRecoveryRecords >= 0) {
-                        std::println(std::cout, "Recovery records within the last {} days:", config.queryRecoveryRecords);
-                    } else {
-                        std::println(std::cout, "Recovery records:");
-                    }
-                    std::println(std::cout, "ID\tIP Address\tHostname\tAlert Time\t\tRecovery Time");
-                    std::println(std::cout, "------------------------------------------------------------------------------------------------");
-                    for (const auto& [id, ip, hostname, alertTime, recoveryTime] : records) {
-                        std::println(std::cout, "{}\t{}\t\t{}\t\t{}\t{}", id, ip, hostname, alertTime, recoveryTime);
-                    }
-                }
+                queryRecoveryRecords<DatabaseManagerPG>(config.databasePath, config.queryRecoveryRecords);
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize database");
-                    return 1;
-                }
-                
-                auto records = db.getRecoveryRecords(config.queryRecoveryRecords);
-                if (records.empty()) {
-                    if (config.queryRecoveryRecords >= 0) {
-                        std::println(std::cout, "No recovery records within the last {} days.", config.queryRecoveryRecords);
-                    } else {
-                        std::println(std::cout, "No recovery records.");
-                    }
-                } else {
-                    if (config.queryRecoveryRecords >= 0) {
-                        std::println(std::cout, "Recovery records within the last {} days:", config.queryRecoveryRecords);
-                    } else {
-                        std::println(std::cout, "Recovery records:");
-                    }
-                    std::println(std::cout, "ID\tIP Address\tHostname\tAlert Time\t\tRecovery Time");
-                    std::println(std::cout, "------------------------------------------------------------------------------------------------");
-                    for (const auto& [id, ip, hostname, alertTime, recoveryTime] : records) {
-                        std::println(std::cout, "{}\t{}\t\t{}\t\t{}\t{}", id, ip, hostname, alertTime, recoveryTime);
-                    }
-                }
+                queryRecoveryRecords<DatabaseManager>(config.databasePath, config.queryRecoveryRecords);
 #ifdef USE_POSTGRESQL
             }
 #endif
@@ -229,20 +254,10 @@ int main(int argc, char* argv[]) {
         } else if (config.enableDatabase) {
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
-                    return 1;
-                }
-                hosts = db.getAllHosts();
+                hosts = getAllHosts<DatabaseManagerPG>(config.databasePath);
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize database" << std::endl;
-                    return 1;
-                }
-                hosts = db.getAllHosts();
+                hosts = getAllHosts<DatabaseManager>(config.databasePath);
 #ifdef USE_POSTGRESQL
             }
 #endif
@@ -266,41 +281,13 @@ int main(int argc, char* argv[]) {
         if (config.enableDatabase) {
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
-                    return 1;
-                }
-                
-                // 将结果转换为数据库所需的格式并批量插入
-                std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
-                dbResults.reserve(allResults.size());
-                
-                for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
-                    dbResults.emplace_back(ip, hostname, delay, result, timestamp);
-                }
-                
-                if (!db.insertPingResults(dbResults)) {
+                if (!insertPingResults<DatabaseManagerPG>(config.databasePath, allResults)) {
                     std::println(std::cerr, "Failed to insert ping results into PostgreSQL database");
                     return 1;
                 }
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize database" << std::endl;
-                    return 1;
-                }
-                
-                // 将结果转换为数据库所需的格式并批量插入
-                std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
-                dbResults.reserve(allResults.size());
-                
-                for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
-                    dbResults.emplace_back(ip, hostname, delay, result, timestamp);
-                }
-                
-                if (!db.insertPingResults(dbResults)) {
+                if (!insertPingResults<DatabaseManager>(config.databasePath, allResults)) {
                     std::println(std::cerr, "Failed to insert ping results into database");
                     return 1;
                 }
@@ -313,43 +300,13 @@ int main(int argc, char* argv[]) {
         if (config.enableDatabase) {
 #ifdef USE_POSTGRESQL
             if (config.usePostgreSQL) {
-                DatabaseManagerPG db(config.databasePath);
-                if (!db.initialize()) {
-                    std::println(std::cerr, "Failed to initialize PostgreSQL database");
+                if (!processAlerts<DatabaseManagerPG>(config.databasePath, allResults)) {
                     return 1;
-                }
-                
-                // 处理告警：主机状态不通时记录到告警表，主机状态正常时从告警表移除
-                for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
-                    if (!success) {
-                        // 主机状态不通，添加到告警表
-                        if (!db.addAlert(ip, hostname)) {
-                            std::println(std::cerr, "Failed to add alert for IP: {}", ip);
-                        }
-                    } else {
-                        // 主机状态正常，从告警表移除
-                        db.removeAlert(ip);
-                    }
                 }
             } else {
 #endif
-                DatabaseManager db(config.databasePath);
-                if (!db.initialize()) {
-                    std::cerr << "Failed to initialize database" << std::endl;
+                if (!processAlerts<DatabaseManager>(config.databasePath, allResults)) {
                     return 1;
-                }
-                
-                // 处理告警：主机状态不通时记录到告警表，主机状态正常时从告警表移除
-                for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
-                    if (!success) {
-                        // 主机状态不通，添加到告警表
-                        if (!db.addAlert(ip, hostname)) {
-                            std::println(std::cerr, "Failed to add alert for IP: {}", ip);
-                        }
-                    } else {
-                        // 主机状态正常，从告警表移除
-                        db.removeAlert(ip);
-                    }
                 }
 #ifdef USE_POSTGRESQL
             }

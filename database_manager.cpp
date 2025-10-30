@@ -185,6 +185,119 @@ bool DatabaseManager::insertPingResult(const std::string& ip, const std::string&
     return insertPingResults(results);
 }
 
+// 辅助函数：验证IP地址格式并创建表
+bool DatabaseManager::validateAndPrepareIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    // 验证所有IP地址格式
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        if (!isValidIP(ip)) {
+            std::cerr << "Invalid IP address format: " << ip << std::endl;
+            return false;
+        }
+    }
+    
+    // 为所有IP地址创建表（如果尚未创建）
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        if (!createIPTable(ip)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// 辅助函数：批量插入或更新主机信息
+bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    const char* upsertHostSQL = R"(
+        INSERT INTO hosts (ip, hostname, last_seen)
+        VALUES (?, ?, datetime('now', 'localtime'))
+        ON CONFLICT(ip) DO UPDATE SET
+        hostname = excluded.hostname,
+        last_seen = excluded.last_seen;
+    )";
+    
+    sqlite3_stmt* hostStmt;
+    int rc = sqlite3_prepare_v2(db, upsertHostSQL, -1, &hostStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare host statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    bool success = true;
+    // 为每个结果执行主机信息插入/更新
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(hostStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
+        
+        rc = sqlite3_step(hostStmt);
+        if (rc != SQLITE_DONE) {
+            std::cerr << "Failed to execute host statement: " << sqlite3_errmsg(db) << std::endl;
+            success = false;
+            break;
+        }
+        
+        // 重置语句以供下一次使用
+        sqlite3_reset(hostStmt);
+    }
+    sqlite3_finalize(hostStmt);
+    
+    return success;
+}
+
+// 辅助函数：批量插入ping结果
+bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    // 为每个IP地址批量插入ping结果
+    std::map<std::string, sqlite3_stmt*> pingStmts;
+    bool success = true;
+    
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        std::string tableName = ipToTableName(ip);
+        
+        // 如果还没有为这个IP创建语句，创建一个
+        if (pingStmts.find(ip) == pingStmts.end()) {
+            std::ostringstream insertSQLStream;
+            insertSQLStream << "INSERT INTO " << tableName << " (delay, success, timestamp)"
+                            << "VALUES (?, ?, ?);";
+            
+            std::string insertSQL = insertSQLStream.str();
+            
+            sqlite3_stmt* pingStmt;
+            int rc = sqlite3_prepare_v2(db, insertSQL.c_str(), -1, &pingStmt, 0);
+            if (rc != SQLITE_OK) {
+                std::cerr << "Failed to prepare ping statement for IP " << ip << ": " << sqlite3_errmsg(db) << std::endl;
+                success = false;
+                break;
+            }
+            
+            pingStmts[ip] = pingStmt;
+        }
+        
+        // 绑定参数并执行插入
+        if (success) {
+            sqlite3_stmt* pingStmt = pingStmts[ip];
+            sqlite3_bind_int64(pingStmt, 1, delay);
+            sqlite3_bind_int(pingStmt, 2, successFlag ? 1 : 0);
+            sqlite3_bind_text(pingStmt, 3, timestamp.c_str(), -1, SQLITE_STATIC);
+            
+            int rc = sqlite3_step(pingStmt);
+            if (rc != SQLITE_DONE) {
+                std::cerr << "Failed to execute ping statement for IP " << ip << ": " << sqlite3_errmsg(db) << std::endl;
+                success = false;
+                break;
+            }
+            
+            // 重置语句以供下一次使用
+            sqlite3_reset(pingStmt);
+        }
+    }
+    
+    // 释放所有语句
+    for (auto& [ip, stmt] : pingStmts) {
+        sqlite3_finalize(stmt);
+    }
+    
+    return success;
+}
+
 bool DatabaseManager::insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
     if (!db) {
         std::cerr << "Database not initialized" << std::endl;
@@ -206,107 +319,19 @@ bool DatabaseManager::insertPingResults(const std::vector<std::tuple<std::string
     
     bool success = true;
     
-    // 验证所有IP地址格式
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!isValidIP(ip)) {
-            std::cerr << "Invalid IP address format: " << ip << std::endl;
-            success = false;
-            break;
-        }
+    // 验证并准备IP地址
+    if (success) {
+        success = validateAndPrepareIPs(results);
     }
     
+    // 批量插入或更新主机信息
     if (success) {
-        // 为所有IP地址创建表（如果尚未创建）
-        for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-            if (!createIPTable(ip)) {
-                success = false;
-                break;
-            }
-        }
+        success = upsertHosts(results);
     }
     
+    // 批量插入ping结果
     if (success) {
-        // 在hosts表中批量插入或更新IP与主机名的映射关系
-        const char* upsertHostSQL = R"(
-            INSERT INTO hosts (ip, hostname, last_seen)
-            VALUES (?, ?, datetime('now'))
-            ON CONFLICT(ip) DO UPDATE SET
-            hostname = excluded.hostname,
-            last_seen = excluded.last_seen;
-        )";
-        
-        sqlite3_stmt* hostStmt;
-        rc = sqlite3_prepare_v2(db, upsertHostSQL, -1, &hostStmt, 0);
-        if (rc != SQLITE_OK) {
-            std::cerr << "Failed to prepare host statement: " << sqlite3_errmsg(db) << std::endl;
-            success = false;
-        } else {
-            // 为每个结果执行主机信息插入/更新
-            for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-                sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-                sqlite3_bind_text(hostStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
-                
-                rc = sqlite3_step(hostStmt);
-                if (rc != SQLITE_DONE) {
-                    std::cerr << "Failed to execute host statement: " << sqlite3_errmsg(db) << std::endl;
-                    success = false;
-                    break;
-                }
-                
-                // 重置语句以供下一次使用
-                sqlite3_reset(hostStmt);
-            }
-            sqlite3_finalize(hostStmt);
-        }
-    }
-    
-    if (success) {
-        // 为每个IP地址批量插入ping结果
-        std::map<std::string, sqlite3_stmt*> pingStmts;
-        
-        for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-            std::string tableName = ipToTableName(ip);
-            
-            // 如果还没有为这个IP创建语句，创建一个
-            if (pingStmts.find(ip) == pingStmts.end()) {
-                std::ostringstream insertSQLStream;
-                insertSQLStream << "INSERT INTO " << tableName << " (delay, success, timestamp)"
-                                << "VALUES (?, ?, ?);";
-                
-                std::string insertSQL = insertSQLStream.str();
-                
-                sqlite3_stmt* pingStmt;
-                rc = sqlite3_prepare_v2(db, insertSQL.c_str(), -1, &pingStmt, 0);
-                if (rc != SQLITE_OK) {
-                    std::cerr << "Failed to prepare ping statement for IP " << ip << ": " << sqlite3_errmsg(db) << std::endl;
-                    success = false;
-                    break;
-                }
-                
-                pingStmts[ip] = pingStmt;
-            }
-            
-            // 绑定参数并执行插入
-            sqlite3_stmt* pingStmt = pingStmts[ip];
-            sqlite3_bind_int64(pingStmt, 1, delay);
-            sqlite3_bind_int(pingStmt, 2, successFlag ? 1 : 0);
-            sqlite3_bind_text(pingStmt, 3, timestamp.c_str(), -1, SQLITE_STATIC);
-            
-            rc = sqlite3_step(pingStmt);
-            if (rc != SQLITE_DONE) {
-                std::cerr << "Failed to execute ping statement for IP " << ip << ": " << sqlite3_errmsg(db) << std::endl;
-                success = false;
-                break;
-            }
-            
-            // 重置语句以供下一次使用
-            sqlite3_reset(pingStmt);
-        }
-        
-        // 释放所有语句
-        for (auto& [ip, stmt] : pingStmts) {
-            sqlite3_finalize(stmt);
-        }
+        success = insertPingResultsBatch(results);
     }
     
     // 提交或回滚事务

@@ -6,29 +6,47 @@
 #include <atomic>
 #include <stdexcept>
 #include <ranges>
+#include <chrono>
+#include <cstdlib>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <array>
 
-// Ping工作函数
+// Ping工作函数 - 优化版，使用fork和execvp替代system调用以提高性能
 std::tuple<std::string, std::string, bool, short, std::string> pingHost(const std::string& ip, const std::string& hostname, int pingCount, int timeoutSeconds) {
     // 发送指定数量的包并记录每次的延迟
     std::vector<short> delays;
     bool success = false;
     
     for (int i = 0; i < pingCount; ++i) {
-        // 使用配置的超时时间
-        std::string command = std::format("timeout {} ping -c 1 -W {} {} > /dev/null 2>&1", 
-                                         timeoutSeconds + 2, timeoutSeconds, ip);
-        auto start = std::chrono::high_resolution_clock::now();
-        int result = system(command.c_str());
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        // 使用fork和execvp替代system调用，更高效
+        pid_t pid = fork();
         
-        // 如果任何一次成功，则标记为成功
-        if (result == 0) {
-            success = true;
+        if (pid == 0) {
+            // 子进程 - 执行ping命令
+            execlp("ping", "ping", "-c", "1", "-W", std::to_string(timeoutSeconds).c_str(), ip.c_str(), (char*)NULL);
+            // 如果execlp失败，退出子进程
+            exit(1);
+        } else if (pid > 0) {
+            // 父进程 - 等待子进程完成
+            auto start = std::chrono::high_resolution_clock::now();
+            int status;
+            waitpid(pid, &status, 0);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            
+            // 检查ping命令是否成功
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                success = true;
+            }
+            
+            // 记录延迟（即使失败也记录）
+            delays.push_back(static_cast<short>(duration));
+        } else {
+            // fork失败
+            std::cerr << "Failed to fork process for ping: " << ip << std::endl;
+            delays.push_back(static_cast<short>(timeoutSeconds * 1000)); // 超时值作为延迟
         }
-        
-        // 记录延迟（即使失败也记录）
-        delays.push_back(duration);
     }
     
     // 取所有延迟中的最小值
@@ -40,7 +58,7 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
     std::stringstream timestamp;
     timestamp << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
     
-    return std::make_tuple(ip, hostname, success, static_cast<short>(minDelay), timestamp.str());
+    return std::make_tuple(ip, hostname, success, minDelay, timestamp.str());
 }
 
 std::vector<std::tuple<std::string, std::string, bool, short, std::string>> PingManager::performPing(
@@ -54,9 +72,7 @@ std::vector<std::tuple<std::string, std::string, bool, short, std::string>> Ping
         std::vector<std::future<std::tuple<std::string, std::string, bool, short, std::string>>> futures;
         
         for (const auto& [ip, hostname] : hosts) {
-            futures.emplace_back(std::async(std::launch::async, [ip, hostname, pingCount, timeoutSeconds]() {
-                return pingHost(ip, hostname, pingCount, timeoutSeconds);
-            }));
+            futures.emplace_back(std::async(std::launch::async, pingHost, ip, hostname, pingCount, timeoutSeconds));
         }
         
         // 收集所有主机的结果
@@ -70,7 +86,7 @@ std::vector<std::tuple<std::string, std::string, bool, short, std::string>> Ping
         return allResults;
     }
     
-    // 如果主机数量大于最大并发数，分批执行ping操作
+    // 如果主机数量大于最大并发数，使用线程池优化实现
     std::vector<std::tuple<std::string, std::string, bool, short, std::string>> allResults;
     allResults.reserve(hosts.size());
     
@@ -91,7 +107,7 @@ std::vector<std::tuple<std::string, std::string, bool, short, std::string>> Ping
     
     // 启动工作线程
     for (size_t i = 0; i < maxConcurrent; ++i) {
-        workers.emplace_back([&, timeoutSeconds]() {
+        workers.emplace_back([&, pingCount, timeoutSeconds]() {
             while (true) {
                 std::pair<std::string, std::string> host;
                 
@@ -127,7 +143,7 @@ std::vector<std::tuple<std::string, std::string, bool, short, std::string>> Ping
     // 等待所有主机都被处理
     while (true) {
         {
-            std::lock_guard<std::mutex> lock(queueMutex);
+            std::unique_lock<std::mutex> lock(queueMutex);
             if (hostQueue.empty()) {
                 stop.store(true);
                 break;

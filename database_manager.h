@@ -33,6 +33,10 @@ public:
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> getRecoveryRecords(int days = -1);  // 返回指定天数内的恢复记录，-1表示获取所有恢复记录
     
 private:
+    // 辅助方法
+    bool validateAndPrepareIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
+    bool upsertHosts(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
+    bool insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
     bool createIPTable(const std::string& ip);
     std::string ipToTableName(const std::string& ip);
     bool isValidIP(const std::string& ip);

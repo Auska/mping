@@ -155,6 +155,101 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
     return insertPingResults(results);
 }
 
+// 辅助函数：验证IP地址格式
+bool DatabaseManagerPG::validateIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        if (!isValidIP(ip)) {
+            std::cerr << "Invalid IP address format: " << ip << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+// 辅助函数：创建IP表和索引
+bool DatabaseManagerPG::createIPTables(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        // 创建特定IP的表
+        std::ostringstream createTableSQLStream;
+        createTableSQLStream << "CREATE TABLE IF NOT EXISTS ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << " ("
+                             << "id SERIAL PRIMARY KEY,"
+                             << "delay INTEGER,"
+                             << "success BOOLEAN,"
+                             << "timestamp TIMESTAMP"
+                             << ");";
+        
+        if (!executeQuery(createTableSQLStream.str())) {
+            std::cerr << "Failed to create table for IP " << ip << std::endl;
+            return false;
+        }
+        
+        // 为timestamp列创建索引以提高查询性能
+        std::ostringstream createIndexSQLStream;
+        createIndexSQLStream << "CREATE INDEX IF NOT EXISTS idx_ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << "_timestamp "
+                             << "ON ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << " (timestamp);";
+        
+        if (!executeQuery(createIndexSQLStream.str())) {
+            std::cerr << "Failed to create index for IP " << ip << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+// 辅助函数：批量插入主机信息
+bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    std::ostringstream hostSQLStream;
+    hostSQLStream << "INSERT INTO hosts (ip, hostname, last_seen) VALUES ";
+    
+    bool first = true;
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        if (!first) hostSQLStream << ", ";
+        hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW())";
+        first = false;
+    }
+    
+    hostSQLStream << " ON CONFLICT (ip) DO UPDATE SET "
+                  << "hostname = EXCLUDED.hostname, "
+                  << "last_seen = EXCLUDED.last_seen;";
+    
+    return executeQuery(hostSQLStream.str());
+}
+
+// 辅助函数：批量插入ping结果
+bool DatabaseManagerPG::insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    // 构建批量插入语句
+    std::map<std::string, std::vector<std::string>> batchInserts;
+    
+    // 将结果按IP分组
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        std::string tableName = "ping_" + std::regex_replace(ip, std::regex(R"(\.)"), "_");
+        std::ostringstream insertSQLStream;
+        insertSQLStream << "(" << delay << ", " << (successFlag ? "true" : "false") << ", " << escapeString(timestamp) << ")";
+        batchInserts[tableName].push_back(insertSQLStream.str());
+    }
+    
+    // 为每个表执行批量插入
+    for (const auto& [tableName, values] : batchInserts) {
+        std::ostringstream batchInsertSQLStream;
+        batchInsertSQLStream << "INSERT INTO " << tableName << " (delay, success, timestamp) VALUES ";
+        
+        bool first = true;
+        for (const auto& value : values) {
+            if (!first) batchInsertSQLStream << ", ";
+            batchInsertSQLStream << value;
+            first = false;
+        }
+        batchInsertSQLStream << ";";
+        
+        if (!executeQuery(batchInsertSQLStream.str())) {
+            std::cerr << "Failed to insert ping results for table " << tableName << std::endl;
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
     if (!conn) {
         std::cerr << "Database not initialized" << std::endl;
@@ -174,77 +269,23 @@ bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::stri
     bool success = true;
     
     // 验证所有IP地址格式
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!isValidIP(ip)) {
-            std::cerr << "Invalid IP address format: " << ip << std::endl;
-            success = false;
-            break;
-        }
+    if (success) {
+        success = validateIPs(results);
     }
     
+    // 为所有IP地址创建表（如果尚未创建）
     if (success) {
-        // 在hosts表中批量插入或更新IP与主机名的映射关系
-        std::ostringstream hostSQLStream;
-        hostSQLStream << "INSERT INTO hosts (ip, hostname, last_seen) VALUES ";
-        
-        bool first = true;
-        for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-            if (!first) hostSQLStream << ", ";
-            hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW())";
-            first = false;
-        }
-        
-        hostSQLStream << " ON CONFLICT (ip) DO UPDATE SET "
-                      << "hostname = EXCLUDED.hostname, "
-                      << "last_seen = EXCLUDED.last_seen;";
-        
-        if (!executeQuery(hostSQLStream.str())) {
-            std::cerr << "Failed to insert host information" << std::endl;
-            success = false;
-        }
+        success = createIPTables(results);
     }
     
+    // 在hosts表中批量插入或更新IP与主机名的映射关系
     if (success) {
-        // 为每个IP地址创建表（如果尚未创建）并插入ping结果
-        for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-            // 创建特定IP的表
-            std::ostringstream createTableSQLStream;
-            createTableSQLStream << "CREATE TABLE IF NOT EXISTS ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << " ("
-                                 << "id SERIAL PRIMARY KEY,"
-                                 << "delay INTEGER,"
-                                 << "success BOOLEAN,"
-                                 << "timestamp TIMESTAMP"
-                                 << ");";
-            
-            if (!executeQuery(createTableSQLStream.str())) {
-                std::cerr << "Failed to create table for IP " << ip << std::endl;
-                success = false;
-                break;
-            }
-            
-            // 为timestamp列创建索引以提高查询性能
-            std::ostringstream createIndexSQLStream;
-            createIndexSQLStream << "CREATE INDEX IF NOT EXISTS idx_ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << "_timestamp "
-                                 << "ON ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << " (timestamp);";
-            
-            if (!executeQuery(createIndexSQLStream.str())) {
-                std::cerr << "Failed to create index for IP " << ip << std::endl;
-                success = false;
-                break;
-            }
-            
-            // 插入ping结果
-            std::ostringstream insertSQLStream;
-            insertSQLStream << "INSERT INTO ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") 
-                            << " (delay, success, timestamp) VALUES ("
-                            << delay << ", " << (successFlag ? "true" : "false") << ", " << escapeString(timestamp) << ");";
-            
-            if (!executeQuery(insertSQLStream.str())) {
-                std::cerr << "Failed to insert ping result for IP " << ip << std::endl;
-                success = false;
-                break;
-            }
-        }
+        success = insertHostsBatch(results);
+    }
+    
+    // 批量插入ping结果
+    if (success) {
+        success = insertPingResultsBatch(results);
     }
     
     // 提交或回滚事务

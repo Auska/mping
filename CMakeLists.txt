@@ -5,9 +5,18 @@ project(mping VERSION 1.1.0)
 set(PROJECT_DESCRIPTION "Multi-host Ping Tool")
 set(PROJECT_HOMEPAGE_URL "https://github.com/Auska/mping")
 
-# 设置C++标准
+# 设置C++标准为C++23以获得更好的性能和现代特性
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 设置默认构建类型为Release
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# 启用优化标志
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
 
 # 设置编译时间
 string(TIMESTAMP COMPILE_TIME "%Y-%m-%d %H:%M:%S")
