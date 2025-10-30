@@ -124,6 +124,22 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
     
+    // 创建recovery_records表，用于存储已恢复主机的记录
+    const char* createRecoveryTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS recovery_records (
+            id SERIAL PRIMARY KEY,
+            ip INET,
+            hostname TEXT,
+            alert_time TIMESTAMP,
+            recovery_time TIMESTAMP DEFAULT NOW()
+        );
+    )";
+    
+    if (!executeQuery(createRecoveryTableSQL)) {
+        std::cerr << "Failed to create recovery_records table" << std::endl;
+        return false;
+    }
+    
     return true;
 }
 

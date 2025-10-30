@@ -99,6 +99,30 @@ bool DatabaseManager::initialize() {
         return false;
     }
     
+    // 创建recovery_records表，用于存储已恢复主机的记录
+    const char* createRecoveryTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS recovery_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT,
+            hostname TEXT,
+            alert_time TEXT,
+            recovery_time TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    )";
+    
+    rc = sqlite3_exec(db, createRecoveryTableSQL, 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::string errorMsg = "SQL error creating recovery_records table: ";
+        if (errMsg) {
+            errorMsg += errMsg;
+            sqlite3_free(errMsg);
+        } else {
+            errorMsg += "Unknown error";
+        }
+        std::cerr << errorMsg << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
