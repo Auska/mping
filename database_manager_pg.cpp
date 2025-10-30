@@ -124,22 +124,6 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
     
-    // 创建recovery_records表，用于存储已恢复主机的记录
-    const char* createRecoveryTableSQL = R"(
-        CREATE TABLE IF NOT EXISTS recovery_records (
-            id SERIAL PRIMARY KEY,
-            ip INET,
-            hostname TEXT,
-            alert_time TIMESTAMP,
-            recovery_time TIMESTAMP DEFAULT NOW()
-        );
-    )";
-    
-    if (!executeQuery(createRecoveryTableSQL)) {
-        std::cerr << "Failed to create recovery_records table" << std::endl;
-        return false;
-    }
-    
     return true;
 }
 
@@ -528,45 +512,6 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
         return false;
     }
     
-    // 在删除告警记录前，先将恢复信息写入记录表
-    // 获取告警记录的详细信息
-    std::ostringstream selectSQLStream;
-    selectSQLStream << "SELECT hostname, created_time FROM alerts WHERE ip = " << escapeString(ip) << ";";
-    
-    PGresult* selectRes = executeQueryWithResult(selectSQLStream.str());
-    if (!selectRes) {
-        std::cerr << "Failed to query alert information" << std::endl;
-        return false;
-    }
-    
-    std::string hostname;
-    std::string alertTime;
-    
-    if (PQntuples(selectRes) > 0) {
-        char* hostnameText = PQgetvalue(selectRes, 0, 0);
-        char* alertTimeText = PQgetvalue(selectRes, 0, 1);
-        
-        if (hostnameText) {
-            hostname = hostnameText;
-        }
-        if (alertTimeText) {
-            alertTime = alertTimeText;
-        }
-    }
-    
-    PQclear(selectRes);
-    
-    // 将恢复信息写入记录表
-    std::ostringstream insertRecoverySQLStream;
-    insertRecoverySQLStream << "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) VALUES ("
-                            << escapeString(ip) << ", " << escapeString(hostname) << ", " 
-                            << escapeString(alertTime) << ", NOW());";
-    
-    if (!executeQuery(insertRecoverySQLStream.str())) {
-        std::cerr << "Failed to insert recovery record" << std::endl;
-        return false;
-    }
-    
     // 从告警表中删除记录
     std::ostringstream alertSQLStream;
     alertSQLStream << "DELETE FROM alerts WHERE ip = " << escapeString(ip) << ";";
@@ -619,4 +564,52 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
     
     PQclear(res);
     return alerts;
+}
+std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManagerPG::getRecoveryRecords() {
+    return getRecoveryRecords(-1);  // -1表示获取所有恢复记录
+}
+
+std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManagerPG::getRecoveryRecords(int days) {
+    std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
+    
+    if (!conn) {
+        std::cerr << "Database not initialized" << std::endl;
+        return records;
+    }
+    
+    // 查询恢复记录
+    std::string selectRecordsSQL;
+    if (days >= 0) {
+        // 查询指定天数内的恢复记录
+        std::ostringstream sqlStream;
+        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= NOW() - INTERVAL '" << days << " days';";
+        selectRecordsSQL = sqlStream.str();
+    } else {
+        // 查询所有恢复记录
+        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records;";
+    }
+    
+    PGresult* res = executeQueryWithResult(selectRecordsSQL);
+    if (!res) {
+        std::cerr << "Failed to query recovery records" << std::endl;
+        return records;
+    }
+    
+    for (int row = 0; row < PQntuples(res); row++) {
+        int id = atoi(PQgetvalue(res, row, 0));
+        char* ip = PQgetvalue(res, row, 1);
+        char* hostname = PQgetvalue(res, row, 2);
+        char* alert_time = PQgetvalue(res, row, 3);
+        char* recovery_time = PQgetvalue(res, row, 4);
+        
+        std::string ipStr = ip ? ip : "";
+        std::string hostnameStr = hostname ? hostname : "";
+        std::string alertTimeStr = alert_time ? alert_time : "";
+        std::string recoveryTimeStr = recovery_time ? recovery_time : "";
+        
+        records.emplace_back(id, ipStr, hostnameStr, alertTimeStr, recoveryTimeStr);
+    }
+    
+    PQclear(res);
+    return records;
 }

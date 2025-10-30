@@ -99,30 +99,6 @@ bool DatabaseManager::initialize() {
         return false;
     }
     
-    // 创建recovery_records表，用于存储已恢复主机的记录
-    const char* createRecoveryTableSQL = R"(
-        CREATE TABLE IF NOT EXISTS recovery_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ip TEXT,
-            hostname TEXT,
-            alert_time TEXT,
-            recovery_time TEXT DEFAULT CURRENT_TIMESTAMP
-        );
-    )";
-    
-    rc = sqlite3_exec(db, createRecoveryTableSQL, 0, 0, &errMsg);
-    if (rc != SQLITE_OK) {
-        std::string errorMsg = "SQL error creating recovery_records table: ";
-        if (errMsg) {
-            errorMsg += errMsg;
-            sqlite3_free(errMsg);
-        } else {
-            errorMsg += "Unknown error";
-        }
-        std::cerr << errorMsg << std::endl;
-        return false;
-    }
-    
     return true;
 }
 
@@ -638,71 +614,20 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
         return false;
     }
     
-    // 在删除告警记录前，先将恢复信息写入记录表
-    // 获取告警记录的详细信息
-    const char* selectAlertSQL = "SELECT hostname, created_time FROM alerts WHERE ip = ?;";
-    
-    sqlite3_stmt* selectStmt;
-    int rc = sqlite3_prepare_v2(db, selectAlertSQL, -1, &selectStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare alert select statement: " << sqlite3_errmsg(db) << std::endl;
-        return false;
-    }
-    
-    sqlite3_bind_text(selectStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-    
-    std::string hostname;
-    std::string alertTime;
-    
-    if (sqlite3_step(selectStmt) == SQLITE_ROW) {
-        const char* hostnameText = (const char*)sqlite3_column_text(selectStmt, 0);
-        const char* alertTimeText = (const char*)sqlite3_column_text(selectStmt, 1);
-        
-        if (hostnameText) hostname = hostnameText;
-        if (alertTimeText) alertTime = alertTimeText;
-    }
-    
-    sqlite3_finalize(selectStmt);
-    
-    // 将恢复信息写入记录表
-    const char* insertRecoverySQL = R"(
-        INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time)
-        VALUES (?, ?, ?, datetime('now', 'localtime'));
-    )";
-    
-    sqlite3_stmt* insertStmt;
-    rc = sqlite3_prepare_v2(db, insertRecoverySQL, -1, &insertStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare recovery insert statement: " << sqlite3_errmsg(db) << std::endl;
-        return false;
-    }
-    
-    sqlite3_bind_text(insertStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(insertStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(insertStmt, 3, alertTime.c_str(), -1, SQLITE_STATIC);
-    
-    rc = sqlite3_step(insertStmt);
-    sqlite3_finalize(insertStmt);
-    
-    if (rc != SQLITE_DONE) {
-        std::cerr << "Failed to execute recovery insert statement: " << sqlite3_errmsg(db) << std::endl;
-        return false;
-    }
-    
     // 从告警表中删除记录
     const char* deleteAlertSQL = "DELETE FROM alerts WHERE ip = ?;";
     
-    sqlite3_stmt* deleteStmt;
-    rc = sqlite3_prepare_v2(db, deleteAlertSQL, -1, &deleteStmt, 0);
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, deleteAlertSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare alert delete statement: " << sqlite3_errmsg(db) << std::endl;
         return false;
     }
     
-    sqlite3_bind_text(deleteStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
     
-    rc = sqlite3_step(deleteStmt);
-    sqlite3_finalize(deleteStmt);
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
     
     if (rc != SQLITE_DONE) {
         std::cerr << "Failed to execute alert delete statement: " << sqlite3_errmsg(db) << std::endl;
@@ -758,4 +683,53 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     
     sqlite3_finalize(stmt);
     return alerts;
+}
+std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManager::getRecoveryRecords() {
+    return getRecoveryRecords(-1);  // -1表示获取所有恢复记录
+}
+
+std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManager::getRecoveryRecords(int days) {
+    std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
+    
+    if (!db) {
+        std::cerr << "Database not initialized" << std::endl;
+        return records;
+    }
+    
+    // 查询恢复记录
+    std::string selectRecordsSQL;
+    if (days >= 0) {
+        // 查询指定天数内的恢复记录
+        std::ostringstream sqlStream;
+        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= datetime('now', '-" << days << " days');";
+        selectRecordsSQL = sqlStream.str();
+    } else {
+        // 查询所有恢复记录
+        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records;";
+    }
+    
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, selectRecordsSQL.c_str(), -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare recovery records query statement: " << sqlite3_errmsg(db) << std::endl;
+        return records;
+    }
+    
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int id = sqlite3_column_int(stmt, 0);
+        const char* ip = (const char*)sqlite3_column_text(stmt, 1);
+        const char* hostname = (const char*)sqlite3_column_text(stmt, 2);
+        const char* alert_time = (const char*)sqlite3_column_text(stmt, 3);
+        const char* recovery_time = (const char*)sqlite3_column_text(stmt, 4);
+        
+        std::string ipStr = ip ? ip : "";
+        std::string hostnameStr = hostname ? hostname : "";
+        std::string alertTimeStr = alert_time ? alert_time : "";
+        std::string recoveryTimeStr = recovery_time ? recovery_time : "";
+        
+        records.emplace_back(id, ipStr, hostnameStr, alertTimeStr, recoveryTimeStr);
+    }
+    
+    sqlite3_finalize(stmt);
+    return records;
 }
