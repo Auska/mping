@@ -23,7 +23,11 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
         pid_t pid = fork();
         
         if (pid == 0) {
-            // 子进程 - 执行ping命令
+            // 子进程 - 重定向stdout和stderr到/dev/null以实现静默模式
+            freopen("/dev/null", "w", stdout);
+            freopen("/dev/null", "w", stderr);
+            
+            // 执行ping命令
             execlp("ping", "ping", "-c", "1", "-W", std::to_string(timeoutSeconds).c_str(), ip.c_str(), (char*)NULL);
             // 如果execlp失败，退出子进程
             exit(1);
