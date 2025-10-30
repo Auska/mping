@@ -32,6 +32,7 @@ The project follows a modular design with separated concerns:
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
 - `-q`, `--query`: Query statistics for a specific IP address (requires -d)
 - `-a`, `--alerts [n]`: Query active alerts (requires -d, n: days, default: all)
+- `-r`, `--recovery [n]`: Query recovery records (requires -d, n: days, default: all)
 - `-C`, `--cleanup [n]`: Clean up data older than n days (requires -d, default: 30)
 - `-s`, `--silent`: Silent mode, suppress output
 - `-P`, `--postgresql`: Use PostgreSQL database (requires -d with connection string)

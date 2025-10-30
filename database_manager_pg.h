@@ -30,6 +30,10 @@ public:
     std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts();  // 返回IP, hostname, created_time
     std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts(int days);  // 返回指定天数内的告警
     
+    // 恢复记录相关方法
+    std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> getRecoveryRecords();  // 返回id, ip, hostname, alert_time, recovery_time
+    std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> getRecoveryRecords(int days);  // 返回指定天数内的恢复记录
+    
 private:
     std::string escapeString(const std::string& str);
     bool isValidIP(const std::string& ip);

@@ -150,6 +150,73 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         
+        // 如果请求查询恢复记录，则只显示恢复记录信息，不执行ping操作
+        if (config.queryRecoveryRecords >= 0 || config.queryRecoveryRecords == -2) {  // -2表示启用恢复记录查询（未指定天数），>=0表示查询指定天数内的恢复记录
+            if (!config.enableDatabase) {
+                std::cerr << "Database must be enabled to query recovery records. Use -d option to specify database path.\n";
+                return 1;
+            }
+            
+#ifdef USE_POSTGRESQL
+            if (config.usePostgreSQL) {
+                DatabaseManagerPG db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize PostgreSQL database" << std::endl;
+                    return 1;
+                }
+                
+                auto records = db.getRecoveryRecords(config.queryRecoveryRecords);
+                if (records.empty()) {
+                    if (config.queryRecoveryRecords >= 0) {
+                        std::cout << "No recovery records within the last " << config.queryRecoveryRecords << " days." << std::endl;
+                    } else {
+                        std::cout << "No recovery records." << std::endl;
+                    }
+                } else {
+                    if (config.queryRecoveryRecords >= 0) {
+                        std::cout << "Recovery records within the last " << config.queryRecoveryRecords << " days:" << std::endl;
+                    } else {
+                        std::cout << "Recovery records:" << std::endl;
+                    }
+                    std::cout << "ID\tIP Address\tHostname\tAlert Time\t\tRecovery Time" << std::endl;
+                    std::cout << "------------------------------------------------------------------------------------------------" << std::endl;
+                    for (const auto& [id, ip, hostname, alertTime, recoveryTime] : records) {
+                        std::cout << id << "\t" << ip << "\t\t" << hostname << "\t\t" << alertTime << "\t" << recoveryTime << std::endl;
+                    }
+                }
+            } else {
+#endif
+                DatabaseManager db(config.databasePath);
+                if (!db.initialize()) {
+                    std::cerr << "Failed to initialize database" << std::endl;
+                    return 1;
+                }
+                
+                auto records = db.getRecoveryRecords(config.queryRecoveryRecords);
+                if (records.empty()) {
+                    if (config.queryRecoveryRecords >= 0) {
+                        std::cout << "No recovery records within the last " << config.queryRecoveryRecords << " days." << std::endl;
+                    } else {
+                        std::cout << "No recovery records." << std::endl;
+                    }
+                } else {
+                    if (config.queryRecoveryRecords >= 0) {
+                        std::cout << "Recovery records within the last " << config.queryRecoveryRecords << " days:" << std::endl;
+                    } else {
+                        std::cout << "Recovery records:" << std::endl;
+                    }
+                    std::cout << "ID\tIP Address\tHostname\tAlert Time\t\tRecovery Time" << std::endl;
+                    std::cout << "------------------------------------------------------------------------------------------------" << std::endl;
+                    for (const auto& [id, ip, hostname, alertTime, recoveryTime] : records) {
+                        std::cout << id << "\t" << ip << "\t\t" << hostname << "\t\t" << alertTime << "\t" << recoveryTime << std::endl;
+                    }
+                }
+#ifdef USE_POSTGRESQL
+            }
+#endif
+            return 0;
+        }
+        
         // 读取主机列表
         std::map<std::string, std::string> hosts;
         

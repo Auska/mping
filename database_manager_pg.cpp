@@ -124,6 +124,22 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
     
+    // 创建recovery_records表，用于存储已恢复主机的记录
+    const char* createRecoveryTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS recovery_records (
+            id SERIAL PRIMARY KEY,
+            ip INET,
+            hostname TEXT,
+            alert_time TIMESTAMP,
+            recovery_time TIMESTAMP DEFAULT NOW()
+        );
+    )";
+    
+    if (!executeQuery(createRecoveryTableSQL)) {
+        std::cerr << "Failed to create recovery_records table" << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
@@ -509,6 +525,45 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     // 验证IP地址格式
     if (!isValidIP(ip)) {
         std::cerr << "Invalid IP address format: " << ip << std::endl;
+        return false;
+    }
+    
+    // 在删除告警记录前，先将恢复信息写入记录表
+    // 获取告警记录的详细信息
+    std::ostringstream selectSQLStream;
+    selectSQLStream << "SELECT hostname, created_time FROM alerts WHERE ip = " << escapeString(ip) << ";";
+    
+    PGresult* selectRes = executeQueryWithResult(selectSQLStream.str());
+    if (!selectRes) {
+        std::cerr << "Failed to query alert information" << std::endl;
+        return false;
+    }
+    
+    std::string hostname;
+    std::string alertTime;
+    
+    if (PQntuples(selectRes) > 0) {
+        char* hostnameText = PQgetvalue(selectRes, 0, 0);
+        char* alertTimeText = PQgetvalue(selectRes, 0, 1);
+        
+        if (hostnameText) {
+            hostname = hostnameText;
+        }
+        if (alertTimeText) {
+            alertTime = alertTimeText;
+        }
+    }
+    
+    PQclear(selectRes);
+    
+    // 将恢复信息写入记录表
+    std::ostringstream insertRecoverySQLStream;
+    insertRecoverySQLStream << "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) VALUES ("
+                            << escapeString(ip) << ", " << escapeString(hostname) << ", " 
+                            << escapeString(alertTime) << ", NOW());";
+    
+    if (!executeQuery(insertRecoverySQLStream.str())) {
+        std::cerr << "Failed to insert recovery record" << std::endl;
         return false;
     }
     

@@ -16,6 +16,7 @@ public:
         std::string queryIP = "";
         int cleanupDays = -1;  // -1表示不执行清理
         int queryAlerts = -1;  // -1表示不查询告警，>=0表示查询指定天数内的告警
+        int queryRecoveryRecords = -1;  // -1表示不查询恢复记录，>=0表示查询指定天数内的恢复记录
         int pingCount = 3;  // 默认发送3个包
         int timeoutSeconds = 3;  // 默认超时时间（秒）
 #ifdef USE_POSTGRESQL
