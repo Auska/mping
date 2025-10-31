@@ -568,11 +568,51 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
         return false;
     }
     
+    // 获取告警信息，用于写入恢复记录
+    std::ostringstream selectAlertSQLStream;
+    selectAlertSQLStream << "SELECT hostname, created_time FROM alerts WHERE ip = " << escapeString(ip) << ";";
+    
+    PGresult* selectRes = executeQueryWithResult(selectAlertSQLStream.str());
+    if (!selectRes) {
+        std::cerr << "Failed to query alert information for IP: " << ip << std::endl;
+        return false;
+    }
+    
+    std::string hostname, alertTime;
+    if (PQntuples(selectRes) > 0) {
+        char* hostText = PQgetvalue(selectRes, 0, 0);
+        char* timeText = PQgetvalue(selectRes, 0, 1);
+        if (hostText) {
+            hostname = hostText;
+        }
+        if (timeText) {
+            alertTime = timeText;
+        }
+    }
+    PQclear(selectRes);
+    
     // 从告警表中删除记录
     std::ostringstream alertSQLStream;
     alertSQLStream << "DELETE FROM alerts WHERE ip = " << escapeString(ip) << ";";
     
-    return executeQuery(alertSQLStream.str());
+    if (!executeQuery(alertSQLStream.str())) {
+        return false;
+    }
+    
+    // 如果找到了告警记录，将其写入恢复记录表
+    if (!hostname.empty() && !alertTime.empty()) {
+        std::ostringstream insertRecoverySQLStream;
+        insertRecoverySQLStream << "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) VALUES ("
+                                << escapeString(ip) << ", " << escapeString(hostname) << ", " 
+                                << escapeString(alertTime) << ", NOW());";
+        
+        if (!executeQuery(insertRecoverySQLStream.str())) {
+            std::cerr << "Failed to insert recovery record for IP: " << ip << std::endl;
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts() {

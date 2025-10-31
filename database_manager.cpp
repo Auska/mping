@@ -664,11 +664,35 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
         return false;
     }
     
+    // 获取告警信息，用于写入恢复记录
+    const char* selectAlertSQL = "SELECT hostname, created_time FROM alerts WHERE ip = ?;";
+    sqlite3_stmt* selectStmt;
+    int rc = sqlite3_prepare_v2(db, selectAlertSQL, -1, &selectStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare alert select statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
+    sqlite3_bind_text(selectStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    
+    std::string hostname, alertTime;
+    if (sqlite3_step(selectStmt) == SQLITE_ROW) {
+        const char* hostText = (const char*)sqlite3_column_text(selectStmt, 0);
+        const char* timeText = (const char*)sqlite3_column_text(selectStmt, 1);
+        if (hostText) {
+            hostname = hostText;
+        }
+        if (timeText) {
+            alertTime = timeText;
+        }
+    }
+    sqlite3_finalize(selectStmt);
+    
     // 从告警表中删除记录
     const char* deleteAlertSQL = "DELETE FROM alerts WHERE ip = ?;";
     
     sqlite3_stmt* stmt;
-    int rc = sqlite3_prepare_v2(db, deleteAlertSQL, -1, &stmt, 0);
+    rc = sqlite3_prepare_v2(db, deleteAlertSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare alert delete statement: " << sqlite3_errmsg(db) << std::endl;
         return false;
@@ -682,6 +706,33 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
     if (rc != SQLITE_DONE) {
         std::cerr << "Failed to execute alert delete statement: " << sqlite3_errmsg(db) << std::endl;
         return false;
+    }
+    
+    // 如果找到了告警记录，将其写入恢复记录表
+    if (!hostname.empty() && !alertTime.empty()) {
+        const char* insertRecoverySQL = R"(
+            INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time)
+            VALUES (?, ?, ?, datetime('now', 'localtime'));
+        )";
+        
+        sqlite3_stmt* insertStmt;
+        rc = sqlite3_prepare_v2(db, insertRecoverySQL, -1, &insertStmt, 0);
+        if (rc != SQLITE_OK) {
+            std::cerr << "Failed to prepare recovery record insert statement: " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
+        
+        sqlite3_bind_text(insertStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(insertStmt, 3, alertTime.c_str(), -1, SQLITE_STATIC);
+        
+        rc = sqlite3_step(insertStmt);
+        sqlite3_finalize(insertStmt);
+        
+        if (rc != SQLITE_DONE) {
+            std::cerr << "Failed to execute recovery record insert statement: " << sqlite3_errmsg(db) << std::endl;
+            return false;
+        }
     }
     
     return true;
