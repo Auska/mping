@@ -46,6 +46,18 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'd':
                 config.enableDatabase = true;
                 config.databasePath = optarg;
+                
+                // 自动检测是否为 PostgreSQL 连接字符串
+                {
+                    std::string dbPathStr = optarg;
+                    if (dbPathStr.find("host=") != std::string::npos || 
+                        dbPathStr.find("port=") != std::string::npos || 
+                        dbPathStr.find("user=") != std::string::npos || 
+                        dbPathStr.find("password=") != std::string::npos || 
+                        dbPathStr.find("dbname=") != std::string::npos) {
+                        config.usePostgreSQL = true;
+                    }
+                }
                 break;
             case 'f':
                 config.filename = optarg;
