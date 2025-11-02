@@ -49,6 +49,18 @@ bool DatabaseManagerPG::executeQuery(const std::string& query) {
         return false;
     }
     
+    // 检查连接状态，如果连接断开则尝试重新连接
+    if (PQstatus(conn) != CONNECTION_OK) {
+        std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
+        PQfinish(conn);
+        conn = PQconnectdb(connInfo.c_str());
+        
+        if (PQstatus(conn) != CONNECTION_OK) {
+            std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn));
+            return false;
+        }
+    }
+    
     PGresult* res = PQexec(conn, query.c_str());
     if (PQresultStatus(res) != PGRES_COMMAND_OK && PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
@@ -65,13 +77,55 @@ PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
         return nullptr;
     }
     
+    // 检查连接状态，如果连接断开则尝试重新连接
+    if (PQstatus(conn) != CONNECTION_OK) {
+        std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
+        PQfinish(conn);
+        conn = PQconnectdb(connInfo.c_str());
+        
+        if (PQstatus(conn) != CONNECTION_OK) {
+            std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn));
+            return nullptr;
+        }
+    }
+    
     PGresult* res = PQexec(conn, query.c_str());
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    if (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
         return nullptr;
     }
     return res;
+}
+
+// 检查数据库连接状态
+bool DatabaseManagerPG::checkConnection() {
+    if (!conn) {
+        return false;
+    }
+    
+    // 使用PQping检查连接状态
+    PGPing pingResult = PQping(connInfo.c_str());
+    if (pingResult == PQPING_OK) {
+        // 连接正常
+        return true;
+    } else if (pingResult == PQPING_REJECT) {
+        // 服务器运行但拒绝连接
+        std::println(std::cerr, "Database server is running but rejecting connections");
+        return false;
+    } else {
+        // 服务器未响应，尝试重新连接
+        std::println(std::cerr, "Database server is not responding. Attempting to reconnect...");
+        PQfinish(conn);
+        conn = PQconnectdb(connInfo.c_str());
+        
+        if (PQstatus(conn) != CONNECTION_OK) {
+            std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn));
+            return false;
+        }
+        
+        return true;
+    }
 }
 
 bool DatabaseManagerPG::initialize() {
@@ -94,6 +148,13 @@ bool DatabaseManagerPG::initialize() {
         PQclear(res);
     }
     
+    // 设置连接保持活动状态
+    PGresult* res = PQexec(conn, "SET tcp_keepalives_idle = 60;");
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Warning: Failed to set tcp_keepalives_idle: {}", PQresultErrorMessage(res));
+    }
+    PQclear(res);
+    
     // 创建hosts表，用于存储IP地址与主机名的映射关系
     const char* createHostsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS hosts (
@@ -106,6 +167,34 @@ bool DatabaseManagerPG::initialize() {
     
     if (!executeQuery(createHostsTableSQL)) {
         std::println(std::cerr, "Failed to create hosts table");
+        return false;
+    }
+    
+    // 创建ping_results表，用于存储所有ping结果
+    const char* createPingResultsTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS ping_results (
+            id SERIAL PRIMARY KEY,
+            ip TEXT NOT NULL,
+            hostname TEXT,
+            delay INTEGER,
+            success BOOLEAN,
+            timestamp TIMESTAMP NOT NULL
+        );
+    )";
+    
+    if (!executeQuery(createPingResultsTableSQL)) {
+        std::println(std::cerr, "Failed to create ping_results table");
+        return false;
+    }
+    
+    // 为ping_results表的ip和timestamp列创建索引以提高查询性能
+    const char* createPingResultsIndexSQL = R"(
+        CREATE INDEX IF NOT EXISTS idx_ping_results_ip ON ping_results (ip);
+        CREATE INDEX IF NOT EXISTS idx_ping_results_timestamp ON ping_results (timestamp);
+    )";
+    
+    if (!executeQuery(createPingResultsIndexSQL)) {
+        std::println(std::cerr, "Failed to create indexes for ping_results table");
         return false;
     }
     
@@ -149,6 +238,12 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
         return false;
     }
     
+    // 检查数据库连接
+    if (!conn || PQstatus(conn) != CONNECTION_OK) {
+        std::cerr << "Database not properly initialized or connection lost" << std::endl;
+        return false;
+    }
+    
     // 创建一个包含单个结果的向量并调用批量插入函数
     std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results;
     results.emplace_back(ip, hostname, delay, success, timestamp);
@@ -166,33 +261,10 @@ bool DatabaseManagerPG::validateIPs(const std::vector<std::tuple<std::string, st
     return true;
 }
 
-// 辅助函数：创建IP表和索引
+// 辅助函数：创建IP表和索引（已重构为使用统一表，此函数保持为空以保持接口兼容性）
 bool DatabaseManagerPG::createIPTables(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        // 创建特定IP的表
-        std::ostringstream createTableSQLStream;
-        createTableSQLStream << "CREATE TABLE IF NOT EXISTS ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << " ("
-                             << "id SERIAL PRIMARY KEY,"
-                             << "delay INTEGER,"
-                             << "success BOOLEAN,"
-                             << "timestamp TIMESTAMP"
-                             << ");";
-        
-        if (!executeQuery(createTableSQLStream.str())) {
-            std::cerr << "Failed to create table for IP " << ip << std::endl;
-            return false;
-        }
-        
-        // 为timestamp列创建索引以提高查询性能
-        std::ostringstream createIndexSQLStream;
-        createIndexSQLStream << "CREATE INDEX IF NOT EXISTS idx_ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << "_timestamp "
-                             << "ON ping_" << std::regex_replace(ip, std::regex(R"(\.)"), "_") << " (timestamp);";
-        
-        if (!executeQuery(createIndexSQLStream.str())) {
-            std::cerr << "Failed to create index for IP " << ip << std::endl;
-            return false;
-        }
-    }
+    // 已经在initialize()中创建了统一的ping_results表和索引
+    // 此处无需额外操作
     return true;
 }
 
@@ -217,37 +289,21 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
 
 // 辅助函数：批量插入ping结果
 bool DatabaseManagerPG::insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    // 构建批量插入语句
-    std::map<std::string, std::vector<std::string>> batchInserts;
+    // 构建批量插入语句到统一的ping_results表
+    std::ostringstream batchInsertSQLStream;
+    batchInsertSQLStream << "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES ";
     
-    // 将结果按IP分组
+    bool first = true;
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        std::string tableName = "ping_" + std::regex_replace(ip, std::regex(R"(\.)"), "_");
-        std::ostringstream insertSQLStream;
-        insertSQLStream << "(" << delay << ", " << (successFlag ? "true" : "false") << ", " << escapeString(timestamp) << ")";
-        batchInserts[tableName].push_back(insertSQLStream.str());
+        if (!first) batchInsertSQLStream << ", ";
+        batchInsertSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", " 
+                             << delay << ", " << (successFlag ? "true" : "false") << ", " 
+                             << escapeString(timestamp) << ")";
+        first = false;
     }
+    batchInsertSQLStream << ";";
     
-    // 为每个表执行批量插入
-    for (const auto& [tableName, values] : batchInserts) {
-        std::ostringstream batchInsertSQLStream;
-        batchInsertSQLStream << "INSERT INTO " << tableName << " (delay, success, timestamp) VALUES ";
-        
-        bool first = true;
-        for (const auto& value : values) {
-            if (!first) batchInsertSQLStream << ", ";
-            batchInsertSQLStream << value;
-            first = false;
-        }
-        batchInsertSQLStream << ";";
-        
-        if (!executeQuery(batchInsertSQLStream.str())) {
-            std::cerr << "Failed to insert ping results for table " << tableName << std::endl;
-            return false;
-        }
-    }
-    
-    return true;
+    return executeQuery(batchInsertSQLStream.str());
 }
 
 bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
@@ -329,24 +385,35 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
     std::cout << "Statistics for IP: " << ip << " (" << hostname << ")" << std::endl;
     std::cout << "=========================================================" << std::endl;
     
-    // 查询特定IP的表
-    std::string tableName = "ping_" + std::regex_replace(ip, std::regex(R"(\.)"), "_");
+    // 使用单个查询获取所有统计信息
+    std::ostringstream statsSQLStream;
+    statsSQLStream << "SELECT "
+                   << "COUNT(*) as total_records, "
+                   << "COUNT(*) FILTER (WHERE success = true) as success_count, "
+                   << "AVG(delay) FILTER (WHERE success = true) as avg_delay, "
+                   << "MAX(delay) FILTER (WHERE success = true) as max_delay, "
+                   << "MIN(delay) FILTER (WHERE success = true) as min_delay "
+                   << "FROM ping_results WHERE ip = " << escapeString(ip) << ";";
     
-    // 获取总记录数
-    std::ostringstream countSQLStream;
-    countSQLStream << "SELECT COUNT(*) FROM " << tableName << ";";
-    
-    PGresult* countRes = executeQueryWithResult(countSQLStream.str());
-    if (!countRes) {
-        std::cerr << "Failed to query count" << std::endl;
+    PGresult* statsRes = executeQueryWithResult(statsSQLStream.str());
+    if (!statsRes) {
+        std::cerr << "Failed to query statistics" << std::endl;
         return;
     }
     
-    int totalRecords = 0;
-    if (PQntuples(countRes) > 0) {
-        totalRecords = atoi(PQgetvalue(countRes, 0, 0));
+    if (PQntuples(statsRes) == 0) {
+        std::cout << "No ping records found for this IP." << std::endl;
+        PQclear(statsRes);
+        return;
     }
-    PQclear(countRes);
+    
+    int totalRecords = atoi(PQgetvalue(statsRes, 0, 0));
+    int successCount = atoi(PQgetvalue(statsRes, 0, 1));
+    double avgDelay = (PQgetvalue(statsRes, 0, 2)) ? atof(PQgetvalue(statsRes, 0, 2)) : 0;
+    int maxDelay = (PQgetvalue(statsRes, 0, 3)) ? atoi(PQgetvalue(statsRes, 0, 3)) : 0;
+    int minDelay = (PQgetvalue(statsRes, 0, 4)) ? atoi(PQgetvalue(statsRes, 0, 4)) : 0;
+    
+    PQclear(statsRes);
     
     std::cout << "Total ping records: " << totalRecords << std::endl;
     
@@ -354,22 +421,6 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
         std::cout << "No ping records found for this IP." << std::endl;
         return;
     }
-    
-    // 获取成功和失败的次数
-    std::ostringstream successSQLStream;
-    successSQLStream << "SELECT COUNT(*) FROM " << tableName << " WHERE success = true;";
-    
-    PGresult* successRes = executeQueryWithResult(successSQLStream.str());
-    if (!successRes) {
-        std::cerr << "Failed to query success count" << std::endl;
-        return;
-    }
-    
-    int successCount = 0;
-    if (PQntuples(successRes) > 0) {
-        successCount = atoi(PQgetvalue(successRes, 0, 0));
-    }
-    PQclear(successRes);
     
     int failureCount = totalRecords - successCount;
     double successRate = (totalRecords > 0) ? (double)successCount / totalRecords * 100 : 0;
@@ -379,53 +430,14 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
     std::cout << "Failed pings: " << failureCount << std::endl;
     std::cout << "Success rate: " << std::fixed << std::setprecision(2) << successRate << "%" << std::endl;
     std::cout << "Failure rate: " << std::fixed << std::setprecision(2) << failureRate << "%" << std::endl;
-    
-    // 获取平均延迟
-    std::ostringstream avgDelaySQLStream;
-    avgDelaySQLStream << "SELECT AVG(delay) FROM " << tableName << " WHERE success = true;";
-    
-    PGresult* avgDelayRes = executeQueryWithResult(avgDelaySQLStream.str());
-    if (!avgDelayRes) {
-        std::cerr << "Failed to query average delay" << std::endl;
-        return;
-    }
-    
-    double avgDelay = 0;
-    if (PQntuples(avgDelayRes) > 0) {
-        char* avgText = PQgetvalue(avgDelayRes, 0, 0);
-        if (avgText) {
-            avgDelay = atof(avgText);
-        }
-    }
-    PQclear(avgDelayRes);
-    
     std::cout << "Average delay (successful pings): " << std::fixed << std::setprecision(2) << avgDelay << "ms" << std::endl;
-    
-    // 获取最大和最小延迟
-    std::ostringstream maxMinDelaySQLStream;
-    maxMinDelaySQLStream << "SELECT MAX(delay), MIN(delay) FROM " << tableName << " WHERE success = true;";
-    
-    PGresult* maxMinDelayRes = executeQueryWithResult(maxMinDelaySQLStream.str());
-    if (!maxMinDelayRes) {
-        std::cerr << "Failed to query max/min delay" << std::endl;
-        return;
-    }
-    
-    int maxDelay = 0, minDelay = 0;
-    if (PQntuples(maxMinDelayRes) > 0) {
-        char* maxText = PQgetvalue(maxMinDelayRes, 0, 0);
-        char* minText = PQgetvalue(maxMinDelayRes, 0, 1);
-        if (maxText) maxDelay = atoi(maxText);
-        if (minText) minDelay = atoi(minText);
-    }
-    PQclear(maxMinDelayRes);
-    
     std::cout << "Maximum delay (successful pings): " << maxDelay << "ms" << std::endl;
     std::cout << "Minimum delay (successful pings): " << minDelay << "ms" << std::endl;
     
     // 显示最近的10条记录
     std::ostringstream recentSQLStream;
-    recentSQLStream << "SELECT delay, success, timestamp FROM " << tableName << " ORDER BY timestamp DESC LIMIT 10;";
+    recentSQLStream << "SELECT delay, success, timestamp FROM ping_results WHERE ip = " 
+                    << escapeString(ip) << " ORDER BY timestamp DESC LIMIT 10;";
     
     PGresult* recentRes = executeQueryWithResult(recentSQLStream.str());
     if (!recentRes) {
@@ -457,51 +469,40 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     
     std::cout << "Cleaning up data older than " << days << " days..." << std::endl;
     
-    // 获取所有IP地址
-    PGresult* hostsRes = executeQueryWithResult("SELECT ip FROM hosts;");
-    if (!hostsRes) {
-        std::cerr << "Failed to query hosts" << std::endl;
+    // 从统一的ping_results表中删除指定天数之前的数据
+    std::ostringstream deleteSQLStream;
+    deleteSQLStream << "DELETE FROM ping_results WHERE timestamp < NOW() - INTERVAL '" << days << " days';";
+    
+    PGresult* deleteRes = PQexec(conn, deleteSQLStream.str().c_str());
+    if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
+        std::cerr << "Failed to delete old data: " << PQresultErrorMessage(deleteRes) << std::endl;
+        PQclear(deleteRes);
         return;
     }
     
-    int totalDeleted = 0;
+    int totalDeleted = atoi(PQcmdTuples(deleteRes));
+    PQclear(deleteRes);
     
-    for (int row = 0; row < PQntuples(hostsRes); row++) {
-        char* ip = PQgetvalue(hostsRes, row, 0);
-        
-        if (ip) {
-            std::string ipStr = ip;
-            std::string tableName = "ping_" + std::regex_replace(ipStr, std::regex(R"(\.)"), "_");
-            
-            // 删除指定天数之前的数据
-            std::ostringstream deleteSQLStream;
-            deleteSQLStream << "DELETE FROM " << tableName << " WHERE timestamp < NOW() - INTERVAL '" << days << " days';";
-            
-            PGresult* deleteRes = PQexec(conn, deleteSQLStream.str().c_str());
-            if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
-                std::cerr << "Failed to delete old data for IP " << ipStr << ": " << PQresultErrorMessage(deleteRes) << std::endl;
-                PQclear(deleteRes);
-                continue;
-            }
-            
-            int deletedRows = atoi(PQcmdTuples(deleteRes));
-            totalDeleted += deletedRows;
-            PQclear(deleteRes);
-            
-            if (deletedRows > 0) {
-                std::cout << "Deleted " << deletedRows << " old records for IP " << ipStr << std::endl;
-            }
-        }
+    std::cout << "Deleted " << totalDeleted << " old records from ping_results table" << std::endl;
+    
+    // 清理hosts表中长时间未见的数据（超过2倍保留天数）
+    std::ostringstream cleanupHostsSQLStream;
+    cleanupHostsSQLStream << "DELETE FROM hosts WHERE last_seen < NOW() - INTERVAL '" << (days * 2) << " days';";
+    
+    PGresult* cleanupHostsRes = PQexec(conn, cleanupHostsSQLStream.str().c_str());
+    if (PQresultStatus(cleanupHostsRes) != PGRES_COMMAND_OK) {
+        std::cerr << "Failed to cleanup old hosts: " << PQresultErrorMessage(cleanupHostsRes) << std::endl;
+        PQclear(cleanupHostsRes);
+        return;
     }
     
-    PQclear(hostsRes);
+    int hostsDeleted = atoi(PQcmdTuples(cleanupHostsRes));
+    PQclear(cleanupHostsRes);
     
-    // 清理hosts表中没有关联数据的IP记录
-    // 注意：这在PostgreSQL中需要特殊处理，因为表名不能直接在查询中参数化
-    // 这里简化处理，仅输出提示信息
-    std::cout << "Note: Cleaning unused host records is not implemented in this PostgreSQL version." << std::endl;
+    if (hostsDeleted > 0) {
+        std::cout << "Deleted " << hostsDeleted << " old host records" << std::endl;
+    }
     
-    std::cout << "Total deleted records: " << totalDeleted << std::endl;
     std::cout << "Cleanup completed." << std::endl;
 }
 
@@ -513,8 +514,8 @@ std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
         return hosts;
     }
     
-    // 查询所有主机
-    PGresult* res = executeQueryWithResult("SELECT ip, hostname FROM hosts;");
+    // 查询所有主机，按IP排序以提高查询效率
+    PGresult* res = executeQueryWithResult("SELECT ip, hostname FROM hosts ORDER BY ip;");
     if (!res) {
         std::cerr << "Failed to query hosts" << std::endl;
         return hosts;
@@ -627,16 +628,16 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
         return alerts;
     }
     
-    // 查询活动告警
+    // 查询活动告警，按创建时间排序
     std::string selectAlertsSQL;
     if (days >= 0) {
         // 查询指定天数内的告警
         std::ostringstream sqlStream;
-        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - INTERVAL '" << days << " days';";
+        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - INTERVAL '" << days << " days' ORDER BY created_time DESC;";
         selectAlertsSQL = sqlStream.str();
     } else {
         // 查询所有告警
-        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts;";
+        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC;";
     }
     
     PGresult* res = executeQueryWithResult(selectAlertsSQL);
@@ -644,6 +645,9 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
         std::cerr << "Failed to query alerts" << std::endl;
         return alerts;
     }
+    
+    // 预分配空间以提高性能
+    alerts.reserve(PQntuples(res));
     
     for (int row = 0; row < PQntuples(res); row++) {
         char* ip = PQgetvalue(res, row, 0);
@@ -673,16 +677,16 @@ std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
         return records;
     }
     
-    // 查询恢复记录
+    // 查询恢复记录，按恢复时间排序
     std::string selectRecordsSQL;
     if (days >= 0) {
         // 查询指定天数内的恢复记录
         std::ostringstream sqlStream;
-        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= NOW() - INTERVAL '" << days << " days';";
+        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= NOW() - INTERVAL '" << days << " days' ORDER BY recovery_time DESC;";
         selectRecordsSQL = sqlStream.str();
     } else {
         // 查询所有恢复记录
-        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records;";
+        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY recovery_time DESC;";
     }
     
     PGresult* res = executeQueryWithResult(selectRecordsSQL);
@@ -690,6 +694,9 @@ std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
         std::cerr << "Failed to query recovery records" << std::endl;
         return records;
     }
+    
+    // 预分配空间以提高性能
+    records.reserve(PQntuples(res));
     
     for (int row = 0; row < PQntuples(res); row++) {
         int id = atoi(PQgetvalue(res, row, 0));

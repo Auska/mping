@@ -44,6 +44,7 @@ private:
     std::string escapeString(const std::string& str);
     bool executeQuery(const std::string& query);
     PGresult* executeQueryWithResult(const std::string& query);
+    bool checkConnection();  // 检查并维护数据库连接
 };
 
 #endif // DATABASE_MANAGER_PG_H

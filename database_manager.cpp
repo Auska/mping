@@ -9,6 +9,7 @@
 #include <map>
 #include <regex>
 #include <stdexcept>
+#include <vector>
 
 DatabaseManager::DatabaseManager(const std::string& path) : dbPath(path), db(nullptr) {
     if (path.empty()) {
@@ -78,6 +79,50 @@ bool DatabaseManager::initialize() {
         return false;
     }
     
+    // 创建ping_results表，用于存储所有ping结果
+    const char* createPingResultsTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS ping_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip TEXT NOT NULL,
+            hostname TEXT,
+            delay INTEGER,
+            success BOOLEAN,
+            timestamp TEXT NOT NULL
+        );
+    )";
+    
+    rc = sqlite3_exec(db, createPingResultsTableSQL, 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::string errorMsg = "SQL error creating ping_results table: ";
+        if (errMsg) {
+            errorMsg += errMsg;
+            sqlite3_free(errMsg);
+        } else {
+            errorMsg += "Unknown error";
+        }
+        std::println(std::cerr, "{}", errorMsg);
+        return false;
+    }
+    
+    // 为ping_results表的ip和timestamp列创建索引以提高查询性能
+    const char* createPingResultsIndexSQL = R"(
+        CREATE INDEX IF NOT EXISTS idx_ping_results_ip ON ping_results (ip);
+        CREATE INDEX IF NOT EXISTS idx_ping_results_timestamp ON ping_results (timestamp);
+    )";
+    
+    rc = sqlite3_exec(db, createPingResultsIndexSQL, 0, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::string errorMsg = "SQL error creating indexes for ping_results table: ";
+        if (errMsg) {
+            errorMsg += errMsg;
+            sqlite3_free(errMsg);
+        } else {
+            errorMsg += "Unknown error";
+        }
+        std::println(std::cerr, "{}", errorMsg);
+        return false;
+    }
+    
     // 创建alerts表，用于存储告警信息
     const char* createAlertsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS alerts (
@@ -127,48 +172,10 @@ bool DatabaseManager::initialize() {
     return true;
 }
 
-// 为特定IP地址创建表
+// 为特定IP地址创建表（已重构为使用统一表，此函数保持为空以保持接口兼容性）
 bool DatabaseManager::createIPTable(const std::string& ip) {
-    if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
-        return false;
-    }
-    
-    std::string tableName = ipToTableName(ip);
-    
-    // 创建特定IP的表
-    std::ostringstream createTableSQLStream;
-    createTableSQLStream << "CREATE TABLE IF NOT EXISTS " << tableName << " ("
-                         << "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                         << "delay INTEGER,"
-                         << "success BOOLEAN,"
-                         << "timestamp TEXT"
-                         << ");";
-    
-    std::string createTableSQL = createTableSQLStream.str();
-    
-    char* errMsg = 0;
-    int rc = sqlite3_exec(db, createTableSQL.c_str(), 0, 0, &errMsg);
-    if (rc != SQLITE_OK) {
-        std::cerr << "SQL error creating table for IP " << ip << ": " << errMsg << std::endl;
-        sqlite3_free(errMsg);
-        return false;
-    }
-    
-    // 为timestamp列创建索引以提高查询性能
-    std::ostringstream createIndexSQLStream;
-    createIndexSQLStream << "CREATE INDEX IF NOT EXISTS idx_" << tableName << "_timestamp "
-                         << "ON " << tableName << " (timestamp);";
-    
-    std::string createIndexSQL = createIndexSQLStream.str();
-    
-    rc = sqlite3_exec(db, createIndexSQL.c_str(), 0, 0, &errMsg);
-    if (rc != SQLITE_OK) {
-        std::cerr << "SQL error creating index for IP " << ip << ": " << errMsg << std::endl;
-        sqlite3_free(errMsg);
-        return false;
-    }
-    
+    // 已经在initialize()中创建了统一的ping_results表和索引
+    // 此处无需额外操作
     return true;
 }
 
@@ -245,56 +252,37 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
 
 // 辅助函数：批量插入ping结果
 bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    // 为每个IP地址批量插入ping结果
-    std::map<std::string, sqlite3_stmt*> pingStmts;
+    // 准备插入语句到统一的ping_results表
+    const char* insertSQL = "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES (?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, insertSQL, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to prepare ping results insert statement: " << sqlite3_errmsg(db) << std::endl;
+        return false;
+    }
+    
     bool success = true;
     
+    // 为每个结果执行插入
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        std::string tableName = ipToTableName(ip);
+        sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int(stmt, 3, delay);
+        sqlite3_bind_int(stmt, 4, successFlag ? 1 : 0);
+        sqlite3_bind_text(stmt, 5, timestamp.c_str(), -1, SQLITE_STATIC);
         
-        // 如果还没有为这个IP创建语句，创建一个
-        if (pingStmts.find(ip) == pingStmts.end()) {
-            std::ostringstream insertSQLStream;
-            insertSQLStream << "INSERT INTO " << tableName << " (delay, success, timestamp)"
-                            << "VALUES (?, ?, ?);";
-            
-            std::string insertSQL = insertSQLStream.str();
-            
-            sqlite3_stmt* pingStmt;
-            int rc = sqlite3_prepare_v2(db, insertSQL.c_str(), -1, &pingStmt, 0);
-            if (rc != SQLITE_OK) {
-                std::cerr << "Failed to prepare ping statement for IP " << ip << ": " << sqlite3_errmsg(db) << std::endl;
-                success = false;
-                break;
-            }
-            
-            pingStmts[ip] = pingStmt;
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            std::cerr << "Failed to execute ping results insert statement: " << sqlite3_errmsg(db) << std::endl;
+            success = false;
+            break;
         }
         
-        // 绑定参数并执行插入
-        if (success) {
-            sqlite3_stmt* pingStmt = pingStmts[ip];
-            sqlite3_bind_int64(pingStmt, 1, delay);
-            sqlite3_bind_int(pingStmt, 2, successFlag ? 1 : 0);
-            sqlite3_bind_text(pingStmt, 3, timestamp.c_str(), -1, SQLITE_STATIC);
-            
-            int rc = sqlite3_step(pingStmt);
-            if (rc != SQLITE_DONE) {
-                std::cerr << "Failed to execute ping statement for IP " << ip << ": " << sqlite3_errmsg(db) << std::endl;
-                success = false;
-                break;
-            }
-            
-            // 重置语句以供下一次使用
-            sqlite3_reset(pingStmt);
-        }
+        // 重置语句以供下一次使用
+        sqlite3_reset(stmt);
     }
     
-    // 释放所有语句
-    for (auto& [ip, stmt] : pingStmts) {
-        sqlite3_finalize(stmt);
-    }
-    
+    sqlite3_finalize(stmt);
     return success;
 }
 
@@ -381,26 +369,39 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
     std::cout << "Statistics for IP: " << ip << " (" << hostname << ")" << std::endl;
     std::cout << "=========================================================" << std::endl;
     
-    // 查询特定IP的表
-    std::string tableName = ipToTableName(ip);
+    // 使用单个查询获取所有统计信息
+    const char* statsSQL = R"(
+        SELECT 
+        COUNT(*) as total_records,
+        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count,
+        AVG(CASE WHEN success = 1 THEN delay ELSE NULL END) as avg_delay,
+        MAX(CASE WHEN success = 1 THEN delay ELSE NULL END) as max_delay,
+        MIN(CASE WHEN success = 1 THEN delay ELSE NULL END) as min_delay
+        FROM ping_results WHERE ip = ?;
+    )";
     
-    // 获取总记录数
-    std::ostringstream countSQLStream;
-    countSQLStream << "SELECT COUNT(*) FROM " << tableName << ";";
-    std::string countSQL = countSQLStream.str();
-    
-    sqlite3_stmt* countStmt;
-    rc = sqlite3_prepare_v2(db, countSQL.c_str(), -1, &countStmt, 0);
+    sqlite3_stmt* statsStmt;
+    rc = sqlite3_prepare_v2(db, statsSQL, -1, &statsStmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare count statement: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "Failed to prepare statistics query statement: " << sqlite3_errmsg(db) << std::endl;
         return;
     }
     
-    int totalRecords = 0;
-    if (sqlite3_step(countStmt) == SQLITE_ROW) {
-        totalRecords = sqlite3_column_int(countStmt, 0);
+    sqlite3_bind_text(statsStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    
+    if (sqlite3_step(statsStmt) != SQLITE_ROW) {
+        std::cout << "No ping records found for this IP." << std::endl;
+        sqlite3_finalize(statsStmt);
+        return;
     }
-    sqlite3_finalize(countStmt);
+    
+    int totalRecords = sqlite3_column_int(statsStmt, 0);
+    int successCount = sqlite3_column_int(statsStmt, 1);
+    double avgDelay = sqlite3_column_type(statsStmt, 2) != SQLITE_NULL ? sqlite3_column_double(statsStmt, 2) : 0;
+    int maxDelay = sqlite3_column_type(statsStmt, 3) != SQLITE_NULL ? sqlite3_column_int(statsStmt, 3) : 0;
+    int minDelay = sqlite3_column_type(statsStmt, 4) != SQLITE_NULL ? sqlite3_column_int(statsStmt, 4) : 0;
+    
+    sqlite3_finalize(statsStmt);
     
     std::cout << "Total ping records: " << totalRecords << std::endl;
     
@@ -408,24 +409,6 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
         std::cout << "No ping records found for this IP." << std::endl;
         return;
     }
-    
-    // 获取成功和失败的次数
-    std::ostringstream successSQLStream;
-    successSQLStream << "SELECT COUNT(*) FROM " << tableName << " WHERE success = 1;";
-    std::string successSQL = successSQLStream.str();
-    
-    sqlite3_stmt* successStmt;
-    rc = sqlite3_prepare_v2(db, successSQL.c_str(), -1, &successStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare success count statement: " << sqlite3_errmsg(db) << std::endl;
-        return;
-    }
-    
-    int successCount = 0;
-    if (sqlite3_step(successStmt) == SQLITE_ROW) {
-        successCount = sqlite3_column_int(successStmt, 0);
-    }
-    sqlite3_finalize(successStmt);
     
     int failureCount = totalRecords - successCount;
     double successRate = (totalRecords > 0) ? (double)successCount / totalRecords * 100 : 0;
@@ -435,60 +418,20 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
     std::cout << "Failed pings: " << failureCount << std::endl;
     std::cout << "Success rate: " << std::fixed << std::setprecision(2) << successRate << "%" << std::endl;
     std::cout << "Failure rate: " << std::fixed << std::setprecision(2) << failureRate << "%" << std::endl;
-    
-    // 获取平均延迟
-    std::ostringstream avgDelaySQLStream;
-    avgDelaySQLStream << "SELECT AVG(delay) FROM " << tableName << " WHERE success = 1;";
-    std::string avgDelaySQL = avgDelaySQLStream.str();
-    
-    sqlite3_stmt* avgDelayStmt;
-    rc = sqlite3_prepare_v2(db, avgDelaySQL.c_str(), -1, &avgDelayStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare average delay statement: " << sqlite3_errmsg(db) << std::endl;
-        return;
-    }
-    
-    double avgDelay = 0;
-    if (sqlite3_step(avgDelayStmt) == SQLITE_ROW) {
-        avgDelay = sqlite3_column_double(avgDelayStmt, 0);
-    }
-    sqlite3_finalize(avgDelayStmt);
-    
     std::cout << "Average delay (successful pings): " << std::fixed << std::setprecision(2) << avgDelay << "ms" << std::endl;
-    
-    // 获取最大和最小延迟
-    std::ostringstream maxMinDelaySQLStream;
-    maxMinDelaySQLStream << "SELECT MAX(delay), MIN(delay) FROM " << tableName << " WHERE success = 1;";
-    std::string maxMinDelaySQL = maxMinDelaySQLStream.str();
-    
-    sqlite3_stmt* maxMinDelayStmt;
-    rc = sqlite3_prepare_v2(db, maxMinDelaySQL.c_str(), -1, &maxMinDelayStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare max/min delay statement: " << sqlite3_errmsg(db) << std::endl;
-        return;
-    }
-    
-    int maxDelay = 0, minDelay = 0;
-    if (sqlite3_step(maxMinDelayStmt) == SQLITE_ROW) {
-        maxDelay = sqlite3_column_int(maxMinDelayStmt, 0);
-        minDelay = sqlite3_column_int(maxMinDelayStmt, 1);
-    }
-    sqlite3_finalize(maxMinDelayStmt);
-    
     std::cout << "Maximum delay (successful pings): " << maxDelay << "ms" << std::endl;
     std::cout << "Minimum delay (successful pings): " << minDelay << "ms" << std::endl;
     
     // 显示最近的10条记录
-    std::ostringstream recentSQLStream;
-    recentSQLStream << "SELECT delay, success, timestamp FROM " << tableName << " ORDER BY timestamp DESC LIMIT 10;";
-    std::string recentSQL = recentSQLStream.str();
-    
+    const char* recentSQL = "SELECT delay, success, timestamp FROM ping_results WHERE ip = ? ORDER BY timestamp DESC LIMIT 10;";
     sqlite3_stmt* recentStmt;
-    rc = sqlite3_prepare_v2(db, recentSQL.c_str(), -1, &recentStmt, 0);
+    rc = sqlite3_prepare_v2(db, recentSQL, -1, &recentStmt, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to prepare recent records statement: " << sqlite3_errmsg(db) << std::endl;
         return;
     }
+    
+    sqlite3_bind_text(recentStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
     
     std::cout << "\nRecent ping records (last 10):" << std::endl;
     std::cout << "Timestamp           \tDelay\tStatus" << std::endl;
@@ -514,69 +457,38 @@ void DatabaseManager::cleanupOldData(int days) {
     
     std::cout << "Cleaning up data older than " << days << " days..." << std::endl;
     
-    // 获取所有IP地址
-    const char* selectHostsSQL = "SELECT ip FROM hosts;";
-    sqlite3_stmt* hostsStmt;
-    int rc = sqlite3_prepare_v2(db, selectHostsSQL, -1, &hostsStmt, 0);
+    // 从统一的ping_results表中删除指定天数之前的数据
+    std::ostringstream deleteSQLStream;
+    deleteSQLStream << "DELETE FROM ping_results WHERE timestamp < datetime('now', '-" << days << " days');";
+    std::string deleteSQL = deleteSQLStream.str();
+    
+    char* errMsg = 0;
+    int rc = sqlite3_exec(db, deleteSQL.c_str(), 0, 0, &errMsg);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare hosts query statement: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "SQL error deleting old data from ping_results table: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
         return;
     }
     
-    int totalDeleted = 0;
+    int totalDeleted = sqlite3_changes(db);
+    std::cout << "Deleted " << totalDeleted << " old records from ping_results table" << std::endl;
     
-    while (sqlite3_step(hostsStmt) == SQLITE_ROW) {
-        const char* ip = (const char*)sqlite3_column_text(hostsStmt, 0);
-        
-        if (ip) {
-            std::string ipStr = ip;
-            std::string tableName = ipToTableName(ipStr);
-            
-            // 删除指定天数之前的数据
-            std::ostringstream deleteSQLStream;
-            deleteSQLStream << "DELETE FROM " << tableName << " WHERE timestamp < datetime('now', '-" << days << " days');";
-            std::string deleteSQL = deleteSQLStream.str();
-            
-            char* errMsg = 0;
-            rc = sqlite3_exec(db, deleteSQL.c_str(), 0, 0, &errMsg);
-            if (rc != SQLITE_OK) {
-                std::cerr << "SQL error deleting old data for IP " << ipStr << ": " << errMsg << std::endl;
-                sqlite3_free(errMsg);
-                continue;
-            }
-            
-            int deletedRows = sqlite3_changes(db);
-            totalDeleted += deletedRows;
-            
-            if (deletedRows > 0) {
-                std::cout << "Deleted " << deletedRows << " old records for IP " << ipStr << std::endl;
-            }
-        }
-    }
+    // 清理hosts表中长时间未见的数据（超过2倍保留天数）
+    std::ostringstream cleanupHostsSQLStream;
+    cleanupHostsSQLStream << "DELETE FROM hosts WHERE last_seen < datetime('now', '-" << (days * 2) << " days');";
+    std::string cleanupHostsSQL = cleanupHostsSQLStream.str();
     
-    sqlite3_finalize(hostsStmt);
-    
-    // 清理hosts表中没有关联数据的IP记录
-    const char* cleanHostsSQL = R"(
-        DELETE FROM hosts WHERE ip NOT IN (
-            SELECT DISTINCT substr(name, 4) FROM sqlite_master 
-            WHERE type = 'table' AND name LIKE 'ip_%'
-        );
-    )";
-    
-    char* errMsg = 0;
-    rc = sqlite3_exec(db, cleanHostsSQL, 0, 0, &errMsg);
+    rc = sqlite3_exec(db, cleanupHostsSQL.c_str(), 0, 0, &errMsg);
     if (rc != SQLITE_OK) {
         std::cerr << "SQL error cleaning hosts table: " << errMsg << std::endl;
         sqlite3_free(errMsg);
     } else {
         int deletedHosts = sqlite3_changes(db);
         if (deletedHosts > 0) {
-            std::cout << "Deleted " << deletedHosts << " unused host records" << std::endl;
+            std::cout << "Deleted " << deletedHosts << " old host records" << std::endl;
         }
     }
     
-    std::cout << "Total deleted records: " << totalDeleted << std::endl;
     std::cout << "Cleanup completed." << std::endl;
 }
 
@@ -588,8 +500,8 @@ std::map<std::string, std::string> DatabaseManager::getAllHosts() {
         return hosts;
     }
     
-    // 查询所有主机
-    const char* selectHostsSQL = "SELECT ip, hostname FROM hosts;";
+    // 查询所有主机，按IP排序以提高查询效率
+    const char* selectHostsSQL = "SELECT ip, hostname FROM hosts ORDER BY ip;";
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, selectHostsSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
@@ -746,16 +658,16 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
         return alerts;
     }
     
-    // 查询活动告警
+    // 查询活动告警，按创建时间排序
     std::string selectAlertsSQL;
     if (days >= 0) {
         // 查询指定天数内的告警
         std::ostringstream sqlStream;
-        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= datetime('now', '-" << days << " days');";
+        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= datetime('now', '-" << days << " days') ORDER BY created_time DESC;";
         selectAlertsSQL = sqlStream.str();
     } else {
         // 查询所有告警
-        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts;";
+        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC;";
     }
     
     sqlite3_stmt* stmt;
@@ -764,6 +676,9 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
         std::cerr << "Failed to prepare alerts query statement: " << sqlite3_errmsg(db) << std::endl;
         return alerts;
     }
+    
+    // 预分配空间以提高性能
+    // 由于我们无法预先知道结果数量，这里不进行预分配
     
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const char* ip = (const char*)sqlite3_column_text(stmt, 0);
@@ -789,16 +704,16 @@ std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
         return records;
     }
     
-    // 查询恢复记录
+    // 查询恢复记录，按恢复时间排序
     std::string selectRecordsSQL;
     if (days >= 0) {
         // 查询指定天数内的恢复记录
         std::ostringstream sqlStream;
-        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= datetime('now', '-" << days << " days');";
+        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= datetime('now', '-" << days << " days') ORDER BY recovery_time DESC;";
         selectRecordsSQL = sqlStream.str();
     } else {
         // 查询所有恢复记录
-        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records;";
+        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY recovery_time DESC;";
     }
     
     sqlite3_stmt* stmt;
@@ -807,6 +722,9 @@ std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
         std::cerr << "Failed to prepare recovery records query statement: " << sqlite3_errmsg(db) << std::endl;
         return records;
     }
+    
+    // 预分配空间以提高性能
+    // 由于我们无法预先知道结果数量，这里不进行预分配
     
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         int id = sqlite3_column_int(stmt, 0);
