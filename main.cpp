@@ -1,8 +1,6 @@
 #include "config_manager.h"
-#include "database_manager.h"
-#ifdef USE_POSTGRESQL
-#include "database_manager_pg.h"
-#endif
+#include "database_interface.h"
+#include "database_factory.h"
 #include "ping_manager.h"
 #include "utils.h"
 #include <iostream>
@@ -11,46 +9,43 @@
 #include <string>
 #include <map>
 #include <exception>
+#include <memory>
 
-// 模板函数：处理数据库操作的通用模式
-template<typename DatabaseType>
-bool initializeDatabase(const std::string& databasePath, DatabaseType& db) {
-    if (!db.initialize()) {
+// 函数：处理数据库操作的通用模式
+bool initializeDatabase(std::unique_ptr<DatabaseInterface>& db) {
+    if (!db->initialize()) {
         std::println(std::cerr, "Failed to initialize database");
         return false;
     }
     return true;
 }
 
-// 模板函数：查询IP统计信息
-template<typename DatabaseType>
-void queryIPStatistics(const std::string& databasePath, const std::string& queryIP) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+// 函数：查询IP统计信息
+void queryIPStatistics(const std::string& databasePath, const std::string& queryIP, DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return;
     }
-    db.queryIPStatistics(queryIP);
+    db->queryIPStatistics(queryIP);
 }
 
-// 模板函数：清理旧数据
-template<typename DatabaseType>
-void cleanupOldData(const std::string& databasePath, int cleanupDays) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+// 函数：清理旧数据
+void cleanupOldData(const std::string& databasePath, int cleanupDays, DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return;
     }
-    db.cleanupOldData(cleanupDays);
+    db->cleanupOldData(cleanupDays);
 }
 
-// 模板函数：查询活动告警
-template<typename DatabaseType>
-void queryActiveAlerts(const std::string& databasePath, int queryAlerts) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+// 函数：查询活动告警
+void queryActiveAlerts(const std::string& databasePath, int queryAlerts, DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return;
     }
     
-    auto alerts = db.getActiveAlerts(queryAlerts);
+    auto alerts = db->getActiveAlerts(queryAlerts);
     if (alerts.empty()) {
         if (queryAlerts >= 0) {
             std::println(std::cout, "No active alerts within the last {} days.", queryAlerts);
@@ -71,15 +66,14 @@ void queryActiveAlerts(const std::string& databasePath, int queryAlerts) {
     }
 }
 
-// 模板函数：查询恢复记录
-template<typename DatabaseType>
-void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryRecords) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+// 函数：查询恢复记录
+void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryRecords, DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return;
     }
     
-    auto records = db.getRecoveryRecords(queryRecoveryRecords);
+    auto records = db->getRecoveryRecords(queryRecoveryRecords);
     if (records.empty()) {
         if (queryRecoveryRecords >= 0) {
             std::println(std::cout, "No recovery records within the last {} days.", queryRecoveryRecords);
@@ -100,22 +94,21 @@ void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryReco
     }
 }
 
-// 模板函数：获取所有主机
-template<typename DatabaseType>
-std::map<std::string, std::string> getAllHosts(const std::string& databasePath) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+// 函数：获取所有主机
+std::map<std::string, std::string> getAllHosts(const std::string& databasePath, DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return {};
     }
-    return db.getAllHosts();
+    return db->getAllHosts();
 }
 
-// 模板函数：插入ping结果
-template<typename DatabaseType>
+// 函数：插入ping结果
 bool insertPingResults(const std::string& databasePath, 
-                      const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+                      const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults,
+                      DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return false;
     }
     
@@ -127,15 +120,15 @@ bool insertPingResults(const std::string& databasePath,
         dbResults.emplace_back(ip, hostname, delay, result, timestamp);
     }
     
-    return db.insertPingResults(dbResults);
+    return db->insertPingResults(dbResults);
 }
 
-// 模板函数：处理告警逻辑
-template<typename DatabaseType>
+// 函数：处理告警逻辑
 bool processAlerts(const std::string& databasePath,
-                  const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults) {
-    DatabaseType db(databasePath);
-    if (!initializeDatabase(databasePath, db)) {
+                  const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults,
+                  DatabaseType dbType) {
+    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
+    if (!initializeDatabase(db)) {
         return false;
     }
     
@@ -144,13 +137,13 @@ bool processAlerts(const std::string& databasePath,
     for (const auto& [ip, hostname, successFlag, delay, timestamp] : allResults) {
         if (!successFlag) {
             // 主机状态不通，添加到告警表
-            if (!db.addAlert(ip, hostname)) {
+            if (!db->addAlert(ip, hostname)) {
                 std::println(std::cerr, "Failed to add alert for IP: {}", ip);
                 success = false;
             }
         } else {
             // 主机状态正常，从告警表移除
-            db.removeAlert(ip);
+            db->removeAlert(ip);
         }
     }
     
@@ -167,6 +160,19 @@ int main(int argc, char* argv[]) {
         
         const ConfigManager::Config& config = configManager.getConfig();
         
+        // 确定数据库类型
+        DatabaseType dbType = DatabaseType::SQLITE;  // 默认使用SQLite
+#ifdef USE_POSTGRESQL
+        if (config.usePostgreSQL || DatabaseFactory::detectDatabaseType(config.databasePath) == DatabaseType::POSTGRESQL) {
+            dbType = DatabaseType::POSTGRESQL;
+        }
+#else
+        // 如果没有启用PostgreSQL支持，仅根据连接字符串检测
+        if (DatabaseFactory::detectDatabaseType(config.databasePath) == DatabaseType::POSTGRESQL) {
+            dbType = DatabaseType::POSTGRESQL;
+        }
+#endif
+        
         // 如果提供了查询IP，则只显示查询结果，不执行ping操作
         if (!config.queryIP.empty()) {
             if (!config.enableDatabase) {
@@ -174,15 +180,7 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                queryIPStatistics<DatabaseManagerPG>(config.databasePath, config.queryIP);
-            } else {
-#endif
-                queryIPStatistics<DatabaseManager>(config.databasePath, config.queryIP);
-#ifdef USE_POSTGRESQL
-            }
-#endif
+            queryIPStatistics(config.databasePath, config.queryIP, dbType);
             return 0;
         }
         
@@ -193,15 +191,7 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                cleanupOldData<DatabaseManagerPG>(config.databasePath, config.cleanupDays);
-            } else {
-#endif
-                cleanupOldData<DatabaseManager>(config.databasePath, config.cleanupDays);
-#ifdef USE_POSTGRESQL
-            }
-#endif
+            cleanupOldData(config.databasePath, config.cleanupDays, dbType);
             return 0;
         }
         
@@ -212,15 +202,7 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                queryActiveAlerts<DatabaseManagerPG>(config.databasePath, config.queryAlerts);
-            } else {
-#endif
-                queryActiveAlerts<DatabaseManager>(config.databasePath, config.queryAlerts);
-#ifdef USE_POSTGRESQL
-            }
-#endif
+            queryActiveAlerts(config.databasePath, config.queryAlerts, dbType);
             return 0;
         }
         
@@ -231,15 +213,7 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                queryRecoveryRecords<DatabaseManagerPG>(config.databasePath, config.queryRecoveryRecords);
-            } else {
-#endif
-                queryRecoveryRecords<DatabaseManager>(config.databasePath, config.queryRecoveryRecords);
-#ifdef USE_POSTGRESQL
-            }
-#endif
+            queryRecoveryRecords(config.databasePath, config.queryRecoveryRecords, dbType);
             return 0;
         }
         
@@ -252,15 +226,7 @@ int main(int argc, char* argv[]) {
         if (!config.filename.empty()) {
             hosts = readHostsFromFile(config.filename);
         } else if (config.enableDatabase) {
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                hosts = getAllHosts<DatabaseManagerPG>(config.databasePath);
-            } else {
-#endif
-                hosts = getAllHosts<DatabaseManager>(config.databasePath);
-#ifdef USE_POSTGRESQL
-            }
-#endif
+            hosts = getAllHosts(config.databasePath, dbType);
         } else {
             // 默认从ip.txt文件读取
             hosts = readHostsFromFile("ip.txt");
@@ -280,37 +246,31 @@ int main(int argc, char* argv[]) {
         // 如果启用了数据库，则初始化数据库管理器并存储结果
         if (config.enableDatabase) {
 #ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                if (!insertPingResults<DatabaseManagerPG>(config.databasePath, allResults)) {
+            if (!insertPingResults(config.databasePath, allResults, dbType)) {
+                if (dbType == DatabaseType::POSTGRESQL) {
                     std::println(std::cerr, "Failed to insert ping results into PostgreSQL database");
-                    return 1;
-                }
-            } else {
-#endif
-                if (!insertPingResults<DatabaseManager>(config.databasePath, allResults)) {
+                } else {
                     std::println(std::cerr, "Failed to insert ping results into database");
-                    return 1;
                 }
-#ifdef USE_POSTGRESQL
+                return 1;
+            }
+#else
+            if (!insertPingResults(config.databasePath, allResults, dbType)) {
+                if (dbType == DatabaseType::POSTGRESQL) {
+                    std::println(std::cerr, "Failed to insert ping results into PostgreSQL database");
+                } else {
+                    std::println(std::cerr, "Failed to insert ping results into database");
+                }
+                return 1;
             }
 #endif
         }
         
         // 处理告警逻辑（仅在启用数据库时）
         if (config.enableDatabase) {
-#ifdef USE_POSTGRESQL
-            if (config.usePostgreSQL) {
-                if (!processAlerts<DatabaseManagerPG>(config.databasePath, allResults)) {
-                    return 1;
-                }
-            } else {
-#endif
-                if (!processAlerts<DatabaseManager>(config.databasePath, allResults)) {
-                    return 1;
-                }
-#ifdef USE_POSTGRESQL
+            if (!processAlerts(config.databasePath, allResults, dbType)) {
+                return 1;
             }
-#endif
         }
         
         // 打印所有IP地址和结果（除非启用静默模式）

@@ -46,18 +46,6 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'd':
                 config.enableDatabase = true;
                 config.databasePath = optarg;
-                
-                // 自动检测是否为 PostgreSQL 连接字符串
-                {
-                    std::string dbPathStr = optarg;
-                    if (dbPathStr.find("host=") != std::string::npos || 
-                        dbPathStr.find("port=") != std::string::npos || 
-                        dbPathStr.find("user=") != std::string::npos || 
-                        dbPathStr.find("password=") != std::string::npos || 
-                        dbPathStr.find("dbname=") != std::string::npos) {
-                        config.usePostgreSQL = true;
-                    }
-                }
                 break;
             case 'f':
                 config.filename = optarg;
@@ -129,11 +117,14 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     return false;
                 }
                 break;
-#ifdef USE_POSTGRESQL
             case 'P':
+#ifdef USE_POSTGRESQL
                 config.usePostgreSQL = true;
-                break;
+#else
+                std::println(std::cerr, "PostgreSQL support not compiled in. Rebuild with -DUSE_POSTGRESQL=ON to enable PostgreSQL support.");
+                return false;
 #endif
+                break;
             default:
                 std::println(std::cerr, "Invalid option. Use -h or --help for usage information.");
                 return false;
@@ -167,9 +158,7 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "  -s, --silent\t\tSilent mode, suppress output");
     std::println(std::cout, "  -n, --count <n>\tNumber of ping packets to send (default: 3)");
     std::println(std::cout, "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)");
-#ifdef USE_POSTGRESQL
     std::println(std::cout, "  -P, --postgresql\tUse PostgreSQL database (requires -d with connection string)");
-#endif
     std::println(std::cout, "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.");
     std::println(std::cout, "Default filename: ip.txt");
     std::println(std::cout, "Default behavior: Show all hosts with status (IP, hostname, status, delay)");

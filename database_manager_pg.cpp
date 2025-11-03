@@ -1,4 +1,5 @@
 #include "database_manager_pg.h"
+#include "database_interface.h"
 #include <iostream>
 #include <print>
 #include <sstream>
@@ -616,10 +617,6 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     return true;
 }
 
-std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts() {
-    return getActiveAlerts(-1);  // -1表示获取所有告警
-}
-
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts(int days) {
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
     
@@ -665,10 +662,6 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
     PQclear(res);
     return alerts;
 }
-std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManagerPG::getRecoveryRecords() {
-    return getRecoveryRecords(-1);  // -1表示获取所有恢复记录
-}
-
 std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManagerPG::getRecoveryRecords(int days) {
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
     

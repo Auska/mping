@@ -29,14 +29,16 @@ endif()
 # Configure version header file
 configure_file(project_info.h.in project_info.h @ONLY)
 
-# 选项：是否启用PostgreSQL支持
-option(USE_POSTGRESQL "Use PostgreSQL database" OFF)
+# 选项：选择数据库后端 (SQLite 或 PostgreSQL)
+option(USE_POSTGRESQL "Use PostgreSQL database (default is SQLite)" OFF)
 
 # 选项：是否编译测试程序
 option(BUILD_TESTS "Build test programs" OFF)
 
 # Find SQLite3 library
 find_package(SQLite3 REQUIRED)
+
+# 根据选项查找PostgreSQL或SQLite
 if(USE_POSTGRESQL)
     find_package(PkgConfig REQUIRED)
     if(PKG_CONFIG_FOUND)
@@ -44,11 +46,11 @@ if(USE_POSTGRESQL)
     endif()
 endif()
 
-# Add executable
+# Add executable - include PostgreSQL files only if enabled
 if(USE_POSTGRESQL)
-    add_executable(mping main.cpp database_manager.cpp database_manager_pg.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    add_executable(mping main.cpp database_manager.cpp database_manager_pg.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
 else()
-    add_executable(mping main.cpp database_manager.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    add_executable(mping main.cpp database_manager.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
 endif()
 
 # Add test executables (only when explicitly requested)
@@ -91,9 +93,11 @@ target_compile_definitions(mping PRIVATE
     COMPILE_TIME="${COMPILE_TIME}"
 )
 
-# 如果启用PostgreSQL，添加相应的编译定义
+# 添加数据库后端编译定义
 if(USE_POSTGRESQL)
-    target_compile_definitions(mping PRIVATE USE_POSTGRESQL)
+    target_compile_definitions(mping PRIVATE USE_POSTGRESQL=1)
+else()
+    target_compile_definitions(mping PRIVATE USE_SQLITE=1)
 endif()
 
 # 设置优化标志
