@@ -35,8 +35,10 @@ option(USE_POSTGRESQL "Use PostgreSQL database (default is SQLite)" OFF)
 # 选项：是否编译测试程序
 option(BUILD_TESTS "Build test programs" OFF)
 
-# Find SQLite3 library
-find_package(SQLite3 REQUIRED)
+# Find SQLite3 library only if not using PostgreSQL
+if(NOT USE_POSTGRESQL)
+    find_package(SQLite3 REQUIRED)
+endif()
 
 # 根据选项查找PostgreSQL或SQLite
 if(USE_POSTGRESQL)
@@ -112,15 +114,12 @@ endif()
 # Link libraries
 find_package(Threads REQUIRED)
 if(USE_POSTGRESQL)
-    target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3 ${PQ_LDFLAGS})
+    target_link_libraries(mping PRIVATE Threads::Threads ${PQ_LDFLAGS})
     target_include_directories(mping PRIVATE ${PQ_INCLUDE_DIRS})
     target_compile_options(mping PRIVATE ${PQ_CFLAGS_OTHER})
     
     # Link libraries for test executables (only when explicitly requested)
     if(BUILD_TESTS)
-        target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
-        target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
-        target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
         target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
         target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
         target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
@@ -131,6 +130,8 @@ else()
         target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
         target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
         target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
+        target_link_libraries(test_recovery_records PRIVATE Threads::Threads SQLite::SQLite3)
+        target_link_libraries(test_query_recovery PRIVATE Threads::Threads SQLite::SQLite3)
     endif()
 endif()
 
