@@ -17,25 +17,22 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
     // 定义长选项
     const struct option long_options[] = {
         {"help", no_argument, nullptr, 'h'},
-        {"database", required_argument, nullptr, 'd'},
-        {"file", required_argument, nullptr, 'f'},
-        {"query", required_argument, nullptr, 'q'},
-        {"alerts", optional_argument, nullptr, 'a'},
-        {"recovery", optional_argument, nullptr, 'r'},
-        {"silent", no_argument, nullptr, 's'},
-        {"cleanup", optional_argument, nullptr, 'C'},
-        {"count", required_argument, nullptr, 'n'},
-        {"timeout", required_argument, nullptr, 't'},
-        {"version", no_argument, nullptr, 'v'},
-#ifdef USE_POSTGRESQL
-        {"postgresql", no_argument, nullptr, 'P'},
-#endif
+            {"database", required_argument, nullptr, 'd'},
+            {"file", required_argument, nullptr, 'f'},
+            {"query", required_argument, nullptr, 'q'},
+            {"alerts", optional_argument, nullptr, 'a'},
+            {"recovery", optional_argument, nullptr, 'r'},
+            {"silent", no_argument, nullptr, 's'},
+            {"cleanup", optional_argument, nullptr, 'C'},
+            {"count", required_argument, nullptr, 'n'},
+            {"timeout", required_argument, nullptr, 't'},
+            {"version", no_argument, nullptr, 'v'},
         {nullptr, 0, nullptr, 0}
     };
     
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::n:t:vP", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::n:t:v", long_options, nullptr)) != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -117,17 +114,6 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                     return false;
                 }
                 break;
-            case 'P':
-#ifdef USE_POSTGRESQL
-                config.usePostgreSQL = true;
-#else
-                std::println(std::cerr, "PostgreSQL support not compiled in. Rebuild with -DUSE_POSTGRESQL=ON to enable PostgreSQL support.");
-                return false;
-#endif
-                break;
-            default:
-                std::println(std::cerr, "Invalid option. Use -h or --help for usage information.");
-                return false;
         }
     }
 
@@ -158,7 +144,6 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "  -s, --silent\t\tSilent mode, suppress output");
     std::println(std::cout, "  -n, --count <n>\tNumber of ping packets to send (default: 3)");
     std::println(std::cout, "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)");
-    std::println(std::cout, "  -P, --postgresql\tUse PostgreSQL database (requires -d with connection string)");
     std::println(std::cout, "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.");
     std::println(std::cout, "Default filename: ip.txt");
     std::println(std::cout, "Default behavior: Show all hosts with status (IP, hostname, status, delay)");
