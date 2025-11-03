@@ -86,10 +86,10 @@ void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryReco
         } else {
             std::println(std::cout, "Recovery records:");
         }
-        std::println(std::cout, "ID\tIP Address\tHostname\tAlert Time\t\tRecovery Time");
-        std::println(std::cout, "------------------------------------------------------------------------------------------------");
+        std::println(std::cout, "IP Address\tHostname\tAlert Time\t\tRecovery Time");
+        std::println(std::cout, "----------------------------------------------------------------------------------------");
         for (const auto& [id, ip, hostname, alertTime, recoveryTime] : records) {
-            std::println(std::cout, "{}\t{}\t\t{}\t\t{}\t{}", id, ip, hostname, alertTime, recoveryTime);
+            std::println(std::cout, "{}\t\t{}\t\t{}\t{}", ip, hostname, alertTime, recoveryTime);
         }
     }
 }
