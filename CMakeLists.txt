@@ -46,11 +46,13 @@ if(USE_POSTGRESQL)
     endif()
 endif()
 
-# Add executable - include PostgreSQL files only if enabled
+# Add executable - include only the necessary database manager
 if(USE_POSTGRESQL)
-    add_executable(mping main.cpp database_manager.cpp database_manager_pg.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    add_executable(mping main.cpp database_manager_pg.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    target_compile_definitions(mping PRIVATE USE_POSTGRESQL=1)
 else()
     add_executable(mping main.cpp database_manager.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    target_compile_definitions(mping PRIVATE USE_SQLITE=1)
 endif()
 
 # Add test executables (only when explicitly requested)
