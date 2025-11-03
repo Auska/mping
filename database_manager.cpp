@@ -214,9 +214,14 @@ bool DatabaseManager::validateAndPrepareIPs(const std::vector<std::tuple<std::st
 
 // 辅助函数：批量插入或更新主机信息
 bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    if (results.empty()) {
+        return true;
+    }
+    
+    // 使用批量插入优化性能
     const char* upsertHostSQL = R"(
         INSERT INTO hosts (ip, hostname, last_seen)
-        VALUES (?, ?, datetime('now', 'localtime'))
+        VALUES (?1, ?2, datetime('now', 'localtime'))
         ON CONFLICT(ip) DO UPDATE SET
         hostname = excluded.hostname,
         last_seen = excluded.last_seen;
@@ -230,6 +235,14 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
     }
     
     bool success = true;
+    // 开始事务以提高性能
+    rc = sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to begin transaction for hosts: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(hostStmt);
+        return false;
+    }
+    
     // 为每个结果执行主机信息插入/更新
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
@@ -245,15 +258,30 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
         // 重置语句以供下一次使用
         sqlite3_reset(hostStmt);
     }
-    sqlite3_finalize(hostStmt);
     
+    // 提交或回滚事务
+    if (success) {
+        rc = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+        if (rc != SQLITE_OK) {
+            std::cerr << "Failed to commit transaction for hosts: " << sqlite3_errmsg(db) << std::endl;
+            success = false;
+        }
+    } else {
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+    }
+    
+    sqlite3_finalize(hostStmt);
     return success;
 }
 
 // 辅助函数：批量插入ping结果
 bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    if (results.empty()) {
+        return true;
+    }
+    
     // 准备插入语句到统一的ping_results表
-    const char* insertSQL = "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES (?, ?, ?, ?, ?);";
+    const char* insertSQL = "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES (?1, ?2, ?3, ?4, ?5);";
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, insertSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
@@ -262,6 +290,14 @@ bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::s
     }
     
     bool success = true;
+    
+    // 开始事务以提高性能
+    rc = sqlite3_exec(db, "BEGIN;", 0, 0, 0);
+    if (rc != SQLITE_OK) {
+        std::cerr << "Failed to begin transaction for ping results: " << sqlite3_errmsg(db) << std::endl;
+        sqlite3_finalize(stmt);
+        return false;
+    }
     
     // 为每个结果执行插入
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
@@ -282,6 +318,17 @@ bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::s
         sqlite3_reset(stmt);
     }
     
+    // 提交或回滚事务
+    if (success) {
+        rc = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+        if (rc != SQLITE_OK) {
+            std::cerr << "Failed to commit transaction for ping results: " << sqlite3_errmsg(db) << std::endl;
+            success = false;
+        }
+    } else {
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+    }
+    
     sqlite3_finalize(stmt);
     return success;
 }
@@ -294,15 +341,6 @@ bool DatabaseManager::insertPingResults(const std::vector<std::tuple<std::string
     
     if (results.empty()) {
         return true; // 没有结果需要插入，视为成功
-    }
-    
-    // 开始事务以提高性能
-    char* errMsg = 0;
-    int rc = sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, &errMsg);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to begin transaction: " << errMsg << std::endl;
-        sqlite3_free(errMsg);
-        return false;
     }
     
     bool success = true;
@@ -320,22 +358,6 @@ bool DatabaseManager::insertPingResults(const std::vector<std::tuple<std::string
     // 批量插入ping结果
     if (success) {
         success = insertPingResultsBatch(results);
-    }
-    
-    // 提交或回滚事务
-    if (success) {
-        rc = sqlite3_exec(db, "COMMIT;", 0, 0, &errMsg);
-        if (rc != SQLITE_OK) {
-            std::cerr << "Failed to commit transaction: " << errMsg << std::endl;
-            sqlite3_free(errMsg);
-            success = false;
-        }
-    } else {
-        rc = sqlite3_exec(db, "ROLLBACK;", 0, 0, &errMsg);
-        if (rc != SQLITE_OK) {
-            std::cerr << "Failed to rollback transaction: " << errMsg << std::endl;
-            sqlite3_free(errMsg);
-        }
     }
     
     return success;

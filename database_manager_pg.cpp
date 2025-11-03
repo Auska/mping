@@ -271,6 +271,11 @@ bool DatabaseManagerPG::createIPTables(const std::vector<std::tuple<std::string,
 
 // 辅助函数：批量插入主机信息
 bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    if (results.empty()) {
+        return true;
+    }
+    
+    // 使用批量插入优化性能
     std::ostringstream hostSQLStream;
     hostSQLStream << "INSERT INTO hosts (ip, hostname, last_seen) VALUES ";
     
@@ -285,11 +290,33 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
                   << "hostname = EXCLUDED.hostname, "
                   << "last_seen = EXCLUDED.last_seen;";
     
-    return executeQuery(hostSQLStream.str());
+    // 开始事务以提高性能
+    if (!executeQuery("BEGIN;")) {
+        std::cerr << "Failed to begin transaction for hosts" << std::endl;
+        return false;
+    }
+    
+    bool success = executeQuery(hostSQLStream.str());
+    
+    // 提交或回滚事务
+    if (success) {
+        if (!executeQuery("COMMIT;")) {
+            std::cerr << "Failed to commit transaction for hosts" << std::endl;
+            success = false;
+        }
+    } else {
+        executeQuery("ROLLBACK;");
+    }
+    
+    return success;
 }
 
 // 辅助函数：批量插入ping结果
 bool DatabaseManagerPG::insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    if (results.empty()) {
+        return true;
+    }
+    
     // 构建批量插入语句到统一的ping_results表
     std::ostringstream batchInsertSQLStream;
     batchInsertSQLStream << "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES ";
@@ -304,7 +331,25 @@ bool DatabaseManagerPG::insertPingResultsBatch(const std::vector<std::tuple<std:
     }
     batchInsertSQLStream << ";";
     
-    return executeQuery(batchInsertSQLStream.str());
+    // 开始事务以提高性能
+    if (!executeQuery("BEGIN;")) {
+        std::cerr << "Failed to begin transaction for ping results" << std::endl;
+        return false;
+    }
+    
+    bool success = executeQuery(batchInsertSQLStream.str());
+    
+    // 提交或回滚事务
+    if (success) {
+        if (!executeQuery("COMMIT;")) {
+            std::cerr << "Failed to commit transaction for ping results" << std::endl;
+            success = false;
+        }
+    } else {
+        executeQuery("ROLLBACK;");
+    }
+    
+    return success;
 }
 
 bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
@@ -315,12 +360,6 @@ bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::stri
     
     if (results.empty()) {
         return true; // 没有结果需要插入，视为成功
-    }
-    
-    // 开始事务以提高性能
-    if (!executeQuery("BEGIN;")) {
-        std::cerr << "Failed to begin transaction" << std::endl;
-        return false;
     }
     
     bool success = true;
@@ -343,16 +382,6 @@ bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::stri
     // 批量插入ping结果
     if (success) {
         success = insertPingResultsBatch(results);
-    }
-    
-    // 提交或回滚事务
-    if (success) {
-        if (!executeQuery("COMMIT;")) {
-            std::cerr << "Failed to commit transaction" << std::endl;
-            success = false;
-        }
-    } else {
-        executeQuery("ROLLBACK;");
     }
     
     return success;
