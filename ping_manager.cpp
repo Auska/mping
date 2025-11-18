@@ -56,11 +56,11 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
     // 取所有延迟中的最小值
     short minDelay = *std::ranges::min_element(delays);
     
-    // 获取当前时间戳
+    // 获取当前时间戳（使用UTC时间）
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream timestamp;
-    timestamp << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    timestamp << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
     
     return std::make_tuple(ip, hostname, success, minDelay, timestamp.str());
 }

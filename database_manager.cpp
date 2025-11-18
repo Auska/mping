@@ -221,7 +221,7 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
     // 使用批量插入优化性能
     const char* upsertHostSQL = R"(
         INSERT INTO hosts (ip, hostname, last_seen)
-        VALUES (?1, ?2, datetime('now', 'localtime'))
+        VALUES (?1, ?2, datetime('now', 'utc'))
         ON CONFLICT(ip) DO UPDATE SET
         hostname = excluded.hostname,
         last_seen = excluded.last_seen;
@@ -561,7 +561,7 @@ bool DatabaseManager::addAlert(const std::string& ip, const std::string& hostnam
     // 插入或更新告警记录
     const char* insertAlertSQL = R"(
         INSERT INTO alerts (ip, hostname, created_time)
-        VALUES (?, ?, datetime('now', 'localtime'))
+        VALUES (?, ?, datetime('now', 'utc'))
         ON CONFLICT(ip) DO NOTHING;
     )";
     
@@ -646,7 +646,7 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
     if (!hostname.empty() && !alertTime.empty()) {
         const char* insertRecoverySQL = R"(
             INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time)
-            VALUES (?, ?, ?, datetime('now', 'localtime'));
+            VALUES (?, ?, ?, datetime('now', 'utc'));
         )";
         
         sqlite3_stmt* insertStmt;

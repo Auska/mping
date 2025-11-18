@@ -161,7 +161,7 @@ bool DatabaseManagerPG::initialize() {
         CREATE TABLE IF NOT EXISTS hosts (
             ip TEXT PRIMARY KEY,
             hostname TEXT,
-            created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
             last_seen TIMESTAMP
         );
     )";
@@ -282,7 +282,7 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
     bool first = true;
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         if (!first) hostSQLStream << ", ";
-        hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW())";
+        hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC')";
         first = false;
     }
     
@@ -581,7 +581,7 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
     // 插入或更新告警记录
     std::ostringstream alertSQLStream;
     alertSQLStream << "INSERT INTO alerts (ip, hostname, created_time) VALUES (" 
-                   << escapeString(ip) << ", " << escapeString(hostname) << ", NOW())"
+                   << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC')"
                    << " ON CONFLICT (ip) DO NOTHING;";
     
     return executeQuery(alertSQLStream.str());
@@ -635,7 +635,7 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
         std::ostringstream insertRecoverySQLStream;
         insertRecoverySQLStream << "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) VALUES ("
                                 << escapeString(ip) << ", " << escapeString(hostname) << ", " 
-                                << escapeString(alertTime) << ", NOW());";
+                                << escapeString(alertTime) << ", NOW() AT TIME ZONE 'UTC');";
         
         if (!executeQuery(insertRecoverySQLStream.str())) {
             std::cerr << "Failed to insert recovery record for IP: " << ip << std::endl;
