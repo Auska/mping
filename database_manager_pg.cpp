@@ -161,7 +161,7 @@ bool DatabaseManagerPG::initialize() {
         CREATE TABLE IF NOT EXISTS hosts (
             ip TEXT PRIMARY KEY,
             hostname TEXT,
-            created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+            created_time TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
             last_seen TIMESTAMP,
             last_status TEXT,
             last_delay INTEGER
