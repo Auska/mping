@@ -162,7 +162,9 @@ bool DatabaseManagerPG::initialize() {
             ip TEXT PRIMARY KEY,
             hostname TEXT,
             created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
-            last_seen TIMESTAMP
+            last_seen TIMESTAMP,
+            last_status TEXT,
+            last_delay INTEGER
         );
     )";
     
@@ -277,18 +279,21 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
     
     // 使用批量插入优化性能
     std::ostringstream hostSQLStream;
-    hostSQLStream << "INSERT INTO hosts (ip, hostname, last_seen) VALUES ";
+    hostSQLStream << "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) VALUES ";
     
     bool first = true;
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         if (!first) hostSQLStream << ", ";
-        hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC')";
+        hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC', "
+                      << (successFlag ? "'success'" : "'failed'") << ", " << delay << ")";
         first = false;
     }
     
     hostSQLStream << " ON CONFLICT (ip) DO UPDATE SET "
                   << "hostname = EXCLUDED.hostname, "
-                  << "last_seen = EXCLUDED.last_seen;";
+                  << "last_seen = EXCLUDED.last_seen, "
+                  << "last_status = EXCLUDED.last_status, "
+                  << "last_delay = EXCLUDED.last_delay;";
     
     // 开始事务以提高性能
     if (!executeQuery("BEGIN;")) {

@@ -61,7 +61,9 @@ bool DatabaseManager::initialize() {
             ip TEXT PRIMARY KEY,
             hostname TEXT,
             created_time TEXT DEFAULT CURRENT_TIMESTAMP,
-            last_seen TEXT
+            last_seen TEXT,
+            last_status TEXT,
+            last_delay INTEGER
         );
     )";
     
@@ -220,11 +222,13 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
     
     // 使用批量插入优化性能
     const char* upsertHostSQL = R"(
-        INSERT INTO hosts (ip, hostname, last_seen)
-        VALUES (?1, ?2, datetime('now', 'utc'))
+        INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay)
+        VALUES (?1, ?2, datetime('now', 'utc'), ?3, ?4)
         ON CONFLICT(ip) DO UPDATE SET
         hostname = excluded.hostname,
-        last_seen = excluded.last_seen;
+        last_seen = excluded.last_seen,
+        last_status = excluded.last_status,
+        last_delay = excluded.last_delay;
     )";
     
     sqlite3_stmt* hostStmt;
@@ -247,6 +251,8 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(hostStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(hostStmt, 3, successFlag ? "success" : "failed", -1, SQLITE_STATIC);
+        sqlite3_bind_int(hostStmt, 4, delay);
         
         rc = sqlite3_step(hostStmt);
         if (rc != SQLITE_DONE) {
