@@ -163,7 +163,7 @@ bool DatabaseManagerPG::initialize() {
             hostname TEXT,
             created_time TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
             last_seen TIMESTAMP,
-            last_status TEXT,
+            last_status BOOLEAN,
             last_delay INTEGER
         );
     )";
@@ -285,7 +285,7 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         if (!first) hostSQLStream << ", ";
         hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC', "
-                      << (successFlag ? "'success'" : "'failed'") << ", " << delay << ")";
+                      << (successFlag ? "true" : "false") << ", " << delay << ")";
         first = false;
     }
     

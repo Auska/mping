@@ -62,7 +62,7 @@ bool DatabaseManager::initialize() {
             hostname TEXT,
             created_time TEXT DEFAULT CURRENT_TIMESTAMP,
             last_seen TEXT,
-            last_status TEXT,
+            last_status BOOLEAN,
             last_delay INTEGER
         );
     )";
@@ -251,7 +251,7 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(hostStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_text(hostStmt, 3, successFlag ? "success" : "failed", -1, SQLITE_STATIC);
+        sqlite3_bind_int(hostStmt, 3, successFlag ? 1 : 0);
         sqlite3_bind_int(hostStmt, 4, delay);
         
         rc = sqlite3_step(hostStmt);
