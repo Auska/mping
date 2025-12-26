@@ -24,12 +24,6 @@ DatabaseManagerPG::~DatabaseManagerPG() {
     }
 }
 
-bool DatabaseManagerPG::isValidIP(const std::string& ip) {
-    // 使用正则表达式验证IPv4地址格式
-    std::regex ipPattern(R"(^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$)");
-    return std::regex_match(ip, ipPattern);
-}
-
 std::string DatabaseManagerPG::escapeString(const std::string& str) {
     if (!conn) {
         return str;
@@ -256,17 +250,6 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
     return insertPingResults(results);
 }
 
-// 辅助函数：验证IP地址格式
-bool DatabaseManagerPG::validateIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!isValidIP(ip)) {
-            std::println(std::cerr, "Invalid IP address format: {}", ip);
-            return false;
-        }
-    }
-    return true;
-}
-
 // 辅助函数：创建IP表和索引（已重构为使用统一表，此函数保持为空以保持接口兼容性）
 bool DatabaseManagerPG::createIPTables(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
     // 已经在initialize()中创建了统一的ping_results表和索引
@@ -419,19 +402,19 @@ bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::stri
     if (results.empty()) {
         return true; // 没有结果需要插入，视为成功
     }
-    
+
     bool success = true;
-    
+
     // 验证所有IP地址格式
     if (success) {
-        success = validateIPs(results);
+        success = DatabaseBase::validateIPs(results);
     }
-    
+
     // 为所有IP地址创建表（如果尚未创建）
     if (success) {
         success = createIPTables(results);
     }
-    
+
     // 在hosts表中批量插入或更新IP与主机名的映射关系
     if (success) {
         success = insertHostsBatch(results);

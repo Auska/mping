@@ -59,20 +59,79 @@ endif()
 
 # Add test executables (only when explicitly requested)
 if(BUILD_TESTS)
-    add_executable(test_sqlite_alerts test_sqlite_alerts.cpp database_manager.cpp utils.cpp)
-    target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
+    # Find Catch2 test framework
+    find_package(Catch2 3 QUIET)
+    if(NOT Catch2_FOUND)
+        # If Catch2 is not found, download it
+        include(FetchContent)
+        FetchContent_Declare(
+            Catch2
+            GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+            GIT_TAG v3.5.0
+        )
+        FetchContent_MakeAvailable(Catch2)
+    endif()
+
+    # Add test executable with Catch2
+    add_executable(mping_tests
+        tests/test_main.cpp
+        tests/test_database_manager.cpp
+        tests/test_ping_manager.cpp
+        tests/test_utils.cpp
+    )
     
-    add_executable(test_timezone test_timezone.cpp database_manager.cpp utils.cpp)
-    target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
+    target_link_libraries(mping_tests PRIVATE Catch2::Catch2WithMain)
+    target_include_directories(mping_tests PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
     
-    add_executable(test_alert_persistence test_alert_persistence.cpp database_manager.cpp utils.cpp)
-    target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
+    if(NOT USE_POSTGRESQL)
+        find_package(SQLite3 REQUIRED)
+        target_sources(mping_tests PRIVATE
+            database_manager.cpp
+            database_factory.cpp
+            ping_manager.cpp
+            config_manager.cpp
+            utils.cpp
+            version_info.cpp
+        )
+        target_link_libraries(mping_tests PRIVATE Threads::Threads SQLite::SQLite3)
+    else()
+        target_sources(mping_tests PRIVATE
+            database_manager_pg.cpp
+            database_factory.cpp
+            ping_manager.cpp
+            config_manager.cpp
+            utils.cpp
+            version_info.cpp
+        )
+        target_link_libraries(mping_tests PRIVATE Threads::Threads ${PQ_LDFLAGS})
+        target_include_directories(mping_tests PRIVATE ${PQ_INCLUDE_DIRS})
+        target_compile_options(mping_tests PRIVATE ${PQ_CFLAGS_OTHER})
+    endif()
     
-    add_executable(test_recovery_records test_recovery_records.cpp database_manager.cpp utils.cpp)
-    target_link_libraries(test_recovery_records PRIVATE Threads::Threads SQLite::SQLite3)
+    target_include_directories(mping_tests PRIVATE ${CMAKE_BINARY_DIR})
     
-    add_executable(test_query_recovery test_query_recovery.cpp database_manager.cpp utils.cpp)
-    target_link_libraries(test_query_recovery PRIVATE Threads::Threads SQLite::SQLite3)
+    # Register tests with CTest
+    include(CTest)
+    include(Catch)
+    catch_discover_tests(mping_tests)
+
+    # Legacy test executables (for backward compatibility, SQLite only)
+    if(NOT USE_POSTGRESQL)
+        add_executable(test_sqlite_alerts test_sqlite_alerts.cpp database_manager.cpp utils.cpp)
+        target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
+        
+        add_executable(test_timezone test_timezone.cpp database_manager.cpp utils.cpp)
+        target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
+        
+        add_executable(test_alert_persistence test_alert_persistence.cpp database_manager.cpp utils.cpp)
+        target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
+        
+        add_executable(test_recovery_records test_recovery_records.cpp database_manager.cpp utils.cpp)
+        target_link_libraries(test_recovery_records PRIVATE Threads::Threads SQLite::SQLite3)
+        
+        add_executable(test_query_recovery test_query_recovery.cpp database_manager.cpp utils.cpp)
+        target_link_libraries(test_query_recovery PRIVATE Threads::Threads SQLite::SQLite3)
+    endif()
     
     if(USE_POSTGRESQL)
         add_executable(test_pg test_pg.cpp database_manager_pg.cpp utils.cpp)

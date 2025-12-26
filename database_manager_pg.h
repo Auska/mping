@@ -2,44 +2,37 @@
 #define DATABASE_MANAGER_PG_H
 
 #include "database_interface.h"
+#include "database_base.h"
 #include <string>
 #include <vector>
 #include <tuple>
 #include <map>
-#include <mutex>
 #include <libpq-fe.h>
 
 // 数据库管理类，用于处理PostgreSQL数据库操作
-class DatabaseManagerPG : public DatabaseInterface {
+class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
 private:
     std::string connInfo;
     PGconn* conn;
-    std::mutex dbMutex;  // 互斥锁，用于线程安全
-    
-    // 验证IP地址格式
-    bool isValidIP(const std::string& ip);
-    
+
     // 转义字符串以防止SQL注入
     std::string escapeString(const std::string& str);
-    
+
     // 执行不返回结果的查询
     bool executeQuery(const std::string& query);
-    
+
     // 执行返回结果的查询
     PGresult* executeQueryWithResult(const std::string& query);
-    
+
     // 检查数据库连接状态
     bool checkConnection();
-    
-    // 验证IP地址格式
-    bool validateIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
-    
+
     // 为特定IP地址创建表
     bool createIPTables(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
-    
+
     // 批量插入主机信息
     bool insertHostsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
-    
+
     // 批量插入ping结果
     bool insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 

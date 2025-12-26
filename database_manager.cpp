@@ -32,12 +32,6 @@ std::string DatabaseManager::ipToTableName(const std::string& ip) {
     return tableName;
 }
 
-bool DatabaseManager::isValidIP(const std::string& ip) {
-    // 使用正则表达式验证IPv4地址格式
-    std::regex ipPattern("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
-    return std::regex_match(ip, ipPattern);
-}
-
 bool DatabaseManager::initialize() {
     std::lock_guard<std::mutex> lock(dbMutex);
     int rc = sqlite3_open(dbPath.c_str(), &db);

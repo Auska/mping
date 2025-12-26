@@ -2,6 +2,7 @@
 #define DATABASE_MANAGER_H
 
 #include "database_interface.h"
+#include "database_base.h"
 #include <string>
 #include <vector>
 #include <tuple>
@@ -9,27 +10,23 @@
 #include <sqlite3.h>
 
 // 数据库管理类，用于处理SQLite数据库操作
-class DatabaseManager : public DatabaseInterface {
+class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
 private:
     std::string dbPath;
     sqlite3* db;  // sqlite3* 类型的指针
-    std::mutex dbMutex;  // 互斥锁，用于线程安全
-    
+
     // 辅助函数：将IP地址转换为有效的表名
     std::string ipToTableName(const std::string& ip);
-    
-    // 验证IP地址格式
-    bool isValidIP(const std::string& ip);
-    
+
     // 为特定IP地址创建表
     bool createIPTable(const std::string& ip);
-    
+
     // 验证并准备IP地址
     bool validateAndPrepareIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
-    
+
     // 批量插入或更新主机信息
     bool upsertHosts(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
-    
+
     // 批量插入ping结果
     bool insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
