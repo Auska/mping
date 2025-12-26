@@ -133,6 +133,8 @@ TEST_CASE("DatabaseManager alert management", "[database][sqlite]") {
     SECTION("Get recovery records") {
         REQUIRE(db.addAlert("192.168.1.1", "host1") == true);
         REQUIRE(db.insertPingResult("192.168.1.1", "host1", 10, true, "2025-01-01 00:00:00") == true);
+        // Remove alert to create recovery record
+        REQUIRE(db.removeAlert("192.168.1.1") == true);
         
         auto records = db.getRecoveryRecords(-1);
         REQUIRE(records.size() == 1);
@@ -175,6 +177,8 @@ TEST_CASE("DatabaseFactory", "[database][factory]") {
     SECTION("Detect database type from connection string") {
         REQUIRE(DatabaseFactory::detectDatabaseType("test.db") == DatabaseType::SQLITE);
         REQUIRE(DatabaseFactory::detectDatabaseType("/path/to/test.db") == DatabaseType::SQLITE);
+#ifdef USE_POSTGRESQL
         REQUIRE(DatabaseFactory::detectDatabaseType("host=localhost user=test") == DatabaseType::POSTGRESQL);
+#endif
     }
 }

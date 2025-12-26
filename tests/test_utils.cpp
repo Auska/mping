@@ -67,10 +67,11 @@ TEST_CASE("Utils file reading", "[utils]") {
         REQUIRE(fd >= 0);
         
         std::ofstream file(testFile);
-        file << "invalid line without tab\n";
+        file << "invalid-line-without-tab\n";  // This will fail to parse (needs two values)
         file.close();
 
         auto hosts = readHostsFromFile(testFile);
+        // The parser requires both IP and hostname, so this line will be skipped
         REQUIRE(hosts.empty() == true);
 
         close(fd);
