@@ -75,6 +75,8 @@ if(BUILD_TESTS)
         tests/test_database_manager.cpp
         tests/test_ping_manager.cpp
         tests/test_utils.cpp
+        tests/test_config_manager.cpp
+        tests/test_version_info.cpp
     )
     
     target_link_libraries(mping_tests PRIVATE Catch2::Catch2WithMain)

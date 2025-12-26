@@ -53,7 +53,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'a':
                 config.queryAlerts = -2; // 特殊值表示已启用告警但未指定天数
                 // 如果提供了参数，解析天数值
-                if (optarg) {
+                if (optarg != nullptr) {
                     try {
                         config.queryAlerts = std::stoi(optarg);
                         if (config.queryAlerts < 0) {
@@ -69,7 +69,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'r':
                 config.queryRecoveryRecords = -2; // 特殊值表示已启用恢复记录查询但未指定天数
                 // 如果提供了参数，解析天数值
-                if (optarg) {
+                if (optarg != nullptr) {
                     try {
                         config.queryRecoveryRecords = std::stoi(optarg);
                         if (config.queryRecoveryRecords < 0) {

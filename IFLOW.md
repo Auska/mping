@@ -16,6 +16,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **`config_manager.cpp`/`config_manager.h`**：配置管理
 - **`database_factory.cpp`/`database_factory.h`**：数据库工厂模式实现
 - **`database_interface.h`**：数据库抽象接口
+- **`database_base.h`**：数据库基类，提供公共逻辑和 IP 验证
 - **`version_info.cpp`/`version_info.h`**：版本信息管理
 
 ## 编程规范
@@ -26,6 +27,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 5. **遵循工厂模式**：使用 DatabaseFactory 创建数据库实例
 6. **使用现代 C++ 特性**：如 `std::println`、智能指针、移动语义等
 7. **线程安全**：使用互斥锁和条件变量确保线程安全
+8. **使用 Catch2 v3 进行单元测试**：测试框架使用 Catch2 v3.5.0
 
 ## 项目特性
 - 并发 ping 多个主机以获得更快的结果（默认最大并发数 50）
@@ -40,7 +42,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - 数据自动清理功能
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
-- 支持 pkg-config 安装
+- 支持通过 `make install` 安装到系统
 
 ## 构建系统
 - **CMake 3.10+**：使用 CMake 作为构建系统
@@ -49,7 +51,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **编译选项**：
   - `-DUSE_POSTGRESQL=ON`：启用 PostgreSQL 支持
   - `-DBUILD_TESTS=ON`：编译测试程序
-- **安装支持**：支持通过 `make install` 和 pkg-config 安装
+- **安装支持**：支持通过 `make install` 安装到系统
 
 ### 构建命令
 ```bash
@@ -134,18 +136,13 @@ brew install cmake sqlite postgresql pkg-config
 - **PostgreSQL**: `ping_10_224_1_11`
 
 ## 测试
-- **单元测试**：包含针对 SQLite 和 PostgreSQL 的不同测试套件
-- **测试文件**：
-  - `test_sqlite_alerts.cpp`：SQLite 告警功能测试
-  - `test_timezone.cpp`：时间戳处理功能测试
-  - `test_alert_persistence.cpp`：告警持久化测试
-  - `test_recovery_records.cpp`：恢复记录功能测试
-  - `test_query_recovery.cpp`：恢复记录查询测试
-  - `test_pg.cpp`：PostgreSQL 功能测试
-- **启用测试构建**：使用 `-DBUILD_TESTS=ON` 选项编译测试程序
-- **测试脚本**：
-  - `test_alerts.sh`：告警功能测试脚本
-  - `test_postgresql.sh`：PostgreSQL 功能测试脚本
+项目使用 Catch2 v3.5.0 测试框架进行单元测试。
+
+### 测试文件
+- **`tests/test_main.cpp`**：测试入口，定义 `CATCH_CONFIG_MAIN`
+- **`tests/test_database_manager.cpp`**：数据库管理器功能测试
+- **`tests/test_ping_manager.cpp`**：Ping 管理器功能测试
+- **`tests/test_utils.cpp`**：工具函数测试
 
 ### 运行测试
 ```bash
@@ -154,19 +151,32 @@ cd build
 cmake -DBUILD_TESTS=ON ..
 make
 
-# 运行 SQLite 测试
-./test_sqlite_alerts
-./test_timezone
-./test_alert_persistence
-./test_recovery_records
-./test_query_recovery
+# 运行所有测试
+./mping_tests
 
-# 运行 PostgreSQL 测试（需要启用 PostgreSQL 支持）
-./test_pg
+# 运行特定测试（使用 Catch2 过滤器）
+./mping_tests "[test_case_name]"
 
-# 使用测试脚本
-./test_alerts.sh
-./test_postgresql.sh
+# 显示详细测试输出
+./mping_tests -s
+
+# 列出所有测试用例
+./mping_tests --list-tests
+```
+
+### 测试自动发现
+项目使用 CTest 和 Catch2 的自动测试发现功能。编译时，Catch2 会自动发现所有测试用例并注册到 CTest。
+
+```bash
+# 使用 CTest 运行测试
+cd build
+ctest --output-on-failure
+
+# 运行特定测试
+ctest -R test_case_name
+
+# 显示详细输出
+ctest --verbose
 ```
 
 ## 开发实践
@@ -175,10 +185,12 @@ make
 - **资源管理**：使用智能指针进行自动内存管理
 - **配置管理**：通过 ConfigManager 处理命令行参数和配置
 - **数据库抽象**：通过 DatabaseInterface 抽象不同数据库后端
+- **数据库基类**：通过 DatabaseBase 提供公共逻辑（如 IP 验证）
 - **现代 C++ 特性**：使用 C++23 标准的新特性，如 `std::println` 用于格式化输出
 - **时间处理**：所有时间戳都使用 UTC 时间以确保跨时区的一致性
 - **工厂模式**：使用 DatabaseFactory 根据连接字符串自动检测数据库类型
 - **线程安全**：使用互斥锁（`std::mutex`）和条件变量（`std::condition_variable`）确保线程安全
+- **测试驱动开发**：使用 Catch2 框架编写和运行单元测试
 
 ## 数据库连接字符串格式
 
@@ -213,13 +225,13 @@ make
 sudo make install
 ```
 
-安装后，可使用 pkg-config 查询编译标志：
-```bash
-pkg-config --cflags --libs mping
-```
+安装后，可执行文件将位于：
+- 默认安装路径：`/usr/local/bin/mping`
+- 自定义安装路径：`$CMAKE_INSTALL_PREFIX/bin/mping`
 
 ## 版本信息
-项目版本信息在 `project_info.h.in` 中定义，编译时生成 `project_info.h`：
+项目版本信息通过 CMake 编译定义传递：
+- `PROJECT_NAME`：项目名称
 - `PROJECT_VERSION`：主版本号
 - `PROJECT_VERSION_MAJOR`：主版本号
 - `PROJECT_VERSION_MINOR`：次版本号
@@ -227,3 +239,5 @@ pkg-config --cflags --libs mping
 - `PROJECT_DESCRIPTION`：项目描述
 - `PROJECT_HOMEPAGE_URL`：项目主页
 - `COMPILE_TIME`：编译时间戳
+
+这些定义在编译时通过 `target_compile_definitions` 传递给源代码。
