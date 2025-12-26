@@ -13,7 +13,8 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **`ping_manager.cpp`/`ping_manager.h`**：核心 ping 功能实现（线程池优化）
 - **`database_manager.cpp`/`database_manager.h`**：SQLite 数据库操作
 - **`database_manager_pg.cpp`/`database_manager_pg.h`**：PostgreSQL 数据库操作
-- **`config_manager.cpp`/`config_manager.h`**：配置管理
+- **`config_manager.cpp`/`config_manager.h`**：配置管理（支持 XDG 规范的配置文件）
+- **`config_file.cpp`/`config_file.h`**：INI 格式配置文件解析器（遵循 XDG 规范）
 - **`database_factory.cpp`/`database_factory.h`**：数据库工厂模式实现
 - **`database_interface.h`**：数据库抽象接口
 - **`database_base.h`**：数据库基类，提供公共逻辑和 IP 验证
@@ -43,6 +44,11 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
 - 支持通过 `make install` 安装到系统
+- **配置文件支持**：遵循 XDG 规范的配置文件管理
+  - 支持 INI 格式配置文件
+  - 自动从 XDG 配置目录加载配置
+  - 支持命令行选项覆盖配置文件设置
+  - 支持保存当前配置到文件
 
 ## 构建系统
 - **CMake 3.10+**：使用 CMake 作为构建系统
@@ -114,6 +120,9 @@ brew install cmake sqlite postgresql pkg-config
 - `-s`, `--silent`: 静默模式，抑制输出
 - `-n`, `--count <n>`: 每个主机发送的 ping 包数量（默认：3）
 - `-t`, `--timeout <n>`: 每个 ping 的超时时间（秒，默认：3）
+- `-c`, `--config <path>`: 从指定路径加载配置文件
+- `-N`, `--no-config`: 不加载配置文件
+- `-S`, `--save-config [path]`: 保存当前配置到文件（默认：XDG 配置目录）
 - `-P`, `--postgresql`: 使用 PostgreSQL 数据库（需要 -d 与连接字符串）
 
 ## 文件格式
@@ -124,6 +133,52 @@ brew install cmake sqlite postgresql pkg-config
 10.224.1.12     test2
 ```
 以 `#` 开头的行被视为注释并忽略。
+
+## 配置文件
+mping 支持遵循 XDG 规范的配置文件，使用 INI 格式。
+
+### 配置文件搜索路径（按优先级）
+1. `$XDG_CONFIG_HOME/mping/config`
+2. `$XDG_CONFIG_DIRS/mping/config`
+3. `~/.config/mping/config`
+4. `~/.mpingrc`
+5. `./mping.conf`
+6. `./.mpingrc`
+
+### 配置文件格式
+```ini
+[general]
+# 启用数据库日志记录
+database = true
+
+# 数据库路径
+database_path = "/path/to/database.db"
+
+# 静默模式
+silent = false
+
+# 每个主机发送的 ping 包数量
+ping_count = 3
+
+# 每个 ping 的超时时间（秒）
+timeout = 3
+
+# 清理 n 天前的数据
+cleanup_days = 30
+```
+
+### 配置文件优先级
+命令行选项的优先级高于配置文件。配置文件中的设置会被命令行选项覆盖。
+
+### 保存配置
+使用 `-S` 或 `--save-config` 选项保存当前配置：
+```bash
+# 保存到默认路径（$XDG_CONFIG_HOME/mping/config）
+mping -S
+
+# 保存到指定路径
+mping -S /path/to/config.conf
+```
 
 ## 数据库架构
 - **`hosts` 表**：存储 IP 地址和主机名及创建和最后访问时间戳
@@ -143,6 +198,9 @@ brew install cmake sqlite postgresql pkg-config
 - **`tests/test_database_manager.cpp`**：数据库管理器功能测试
 - **`tests/test_ping_manager.cpp`**：Ping 管理器功能测试
 - **`tests/test_utils.cpp`**：工具函数测试
+- **`tests/test_config_manager.cpp`**：配置管理器测试
+- **`tests/test_version_info.cpp`**：版本信息测试
+- **`tests/test_config_file.cpp`**：配置文件解析器测试
 
 ### 运行测试
 ```bash

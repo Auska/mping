@@ -12,10 +12,10 @@ void reset_getopt() {
 }
 
 TEST_CASE("ConfigManager default values", "[config]") {
-    ConfigManager configManager;
-    const auto& config = configManager.getConfig();
-
     SECTION("Default configuration values") {
+        ConfigManager configManager(false);  // 禁用配置文件加载
+        const auto& config = configManager.getConfig();
+        
         REQUIRE(config.filename == "");
         REQUIRE(config.enableDatabase == false);
         REQUIRE(config.databasePath == "ping_monitor.db");

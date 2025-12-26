@@ -47,10 +47,10 @@ endif()
 
 # Add executable - include only the necessary database manager
 if(USE_POSTGRESQL)
-    add_executable(mping src/main.cpp src/database_manager_pg.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/utils.cpp src/version_info.cpp)
+    add_executable(mping src/main.cpp src/database_manager_pg.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/config_file.cpp src/utils.cpp src/version_info.cpp)
     target_compile_definitions(mping PRIVATE USE_POSTGRESQL=1)
 else()
-    add_executable(mping src/main.cpp src/database_manager.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/utils.cpp src/version_info.cpp)
+    add_executable(mping src/main.cpp src/database_manager.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/config_file.cpp src/utils.cpp src/version_info.cpp)
     target_compile_definitions(mping PRIVATE USE_SQLITE=1)
 endif()
 
@@ -77,6 +77,7 @@ if(BUILD_TESTS)
         tests/test_utils.cpp
         tests/test_config_manager.cpp
         tests/test_version_info.cpp
+        tests/test_config_file.cpp
     )
     
     target_link_libraries(mping_tests PRIVATE Catch2::Catch2WithMain)
@@ -101,6 +102,7 @@ if(BUILD_TESTS)
             src/database_factory.cpp
             src/ping_manager.cpp
             src/config_manager.cpp
+            src/config_file.cpp
             src/utils.cpp
             src/version_info.cpp
         )
@@ -111,6 +113,7 @@ if(BUILD_TESTS)
             src/database_factory.cpp
             src/ping_manager.cpp
             src/config_manager.cpp
+            src/config_file.cpp
             src/utils.cpp
             src/version_info.cpp
         )
