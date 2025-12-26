@@ -50,10 +50,10 @@ endif()
 
 # Add executable - include only the necessary database manager
 if(USE_POSTGRESQL)
-    add_executable(mping main.cpp database_manager_pg.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    add_executable(mping src/main.cpp src/database_manager_pg.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/utils.cpp src/version_info.cpp)
     target_compile_definitions(mping PRIVATE USE_POSTGRESQL=1)
 else()
-    add_executable(mping main.cpp database_manager.cpp database_factory.cpp ping_manager.cpp config_manager.cpp utils.cpp version_info.cpp)
+    add_executable(mping src/main.cpp src/database_manager.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/utils.cpp src/version_info.cpp)
     target_compile_definitions(mping PRIVATE USE_SQLITE=1)
 endif()
 
@@ -81,34 +81,32 @@ if(BUILD_TESTS)
     )
     
     target_link_libraries(mping_tests PRIVATE Catch2::Catch2WithMain)
-    target_include_directories(mping_tests PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR})
+    target_include_directories(mping_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR})
     
     if(NOT USE_POSTGRESQL)
         find_package(SQLite3 REQUIRED)
         target_sources(mping_tests PRIVATE
-            database_manager.cpp
-            database_factory.cpp
-            ping_manager.cpp
-            config_manager.cpp
-            utils.cpp
-            version_info.cpp
+            src/database_manager.cpp
+            src/database_factory.cpp
+            src/ping_manager.cpp
+            src/config_manager.cpp
+            src/utils.cpp
+            src/version_info.cpp
         )
         target_link_libraries(mping_tests PRIVATE Threads::Threads SQLite::SQLite3)
     else()
         target_sources(mping_tests PRIVATE
-            database_manager_pg.cpp
-            database_factory.cpp
-            ping_manager.cpp
-            config_manager.cpp
-            utils.cpp
-            version_info.cpp
+            src/database_manager_pg.cpp
+            src/database_factory.cpp
+            src/ping_manager.cpp
+            src/config_manager.cpp
+            src/utils.cpp
+            src/version_info.cpp
         )
         target_link_libraries(mping_tests PRIVATE Threads::Threads ${PQ_LDFLAGS})
         target_include_directories(mping_tests PRIVATE ${PQ_INCLUDE_DIRS})
         target_compile_options(mping_tests PRIVATE ${PQ_CFLAGS_OTHER})
     endif()
-    
-    target_include_directories(mping_tests PRIVATE ${CMAKE_BINARY_DIR})
     
     # Register tests with CTest
     include(CTest)
@@ -117,24 +115,24 @@ if(BUILD_TESTS)
 
     # Legacy test executables (for backward compatibility, SQLite only)
     if(NOT USE_POSTGRESQL)
-        add_executable(test_sqlite_alerts test_sqlite_alerts.cpp database_manager.cpp utils.cpp)
+        add_executable(test_sqlite_alerts tests/test_sqlite_alerts.cpp src/database_manager.cpp src/utils.cpp)
         target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
         
-        add_executable(test_timezone test_timezone.cpp database_manager.cpp utils.cpp)
+        add_executable(test_timezone tests/test_timezone.cpp src/database_manager.cpp src/utils.cpp)
         target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
         
-        add_executable(test_alert_persistence test_alert_persistence.cpp database_manager.cpp utils.cpp)
+        add_executable(test_alert_persistence tests/test_alert_persistence.cpp src/database_manager.cpp src/utils.cpp)
         target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
         
-        add_executable(test_recovery_records test_recovery_records.cpp database_manager.cpp utils.cpp)
+        add_executable(test_recovery_records tests/test_recovery_records.cpp src/database_manager.cpp src/utils.cpp)
         target_link_libraries(test_recovery_records PRIVATE Threads::Threads SQLite::SQLite3)
         
-        add_executable(test_query_recovery test_query_recovery.cpp database_manager.cpp utils.cpp)
+        add_executable(test_query_recovery tests/test_query_recovery.cpp src/database_manager.cpp src/utils.cpp)
         target_link_libraries(test_query_recovery PRIVATE Threads::Threads SQLite::SQLite3)
     endif()
     
     if(USE_POSTGRESQL)
-        add_executable(test_pg test_pg.cpp database_manager_pg.cpp utils.cpp)
+        add_executable(test_pg tests/test_pg.cpp src/database_manager_pg.cpp src/utils.cpp)
         target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
         target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
         target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
@@ -142,7 +140,7 @@ if(BUILD_TESTS)
 endif()
 
 # Include the directory where project_info.h is generated
-target_include_directories(mping PRIVATE ${CMAKE_BINARY_DIR})
+target_include_directories(mping PRIVATE ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/src)
 
 # Add compile definitions for version information
 target_compile_definitions(mping PRIVATE 
