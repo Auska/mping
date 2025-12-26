@@ -277,43 +277,65 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
         return true;
     }
     
-    // 使用批量插入优化性能
-    std::ostringstream hostSQLStream;
-    hostSQLStream << "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) VALUES ";
-    
-    bool first = true;
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!first) hostSQLStream << ", ";
-        hostSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC', "
-                      << (successFlag ? "true" : "false") << ", " << delay << ")";
-        first = false;
-    }
-    
-    hostSQLStream << " ON CONFLICT (ip) DO UPDATE SET "
-                  << "hostname = EXCLUDED.hostname, "
-                  << "last_seen = EXCLUDED.last_seen, "
-                  << "last_status = EXCLUDED.last_status, "
-                  << "last_delay = EXCLUDED.last_delay;";
-    
     // 开始事务以提高性能
     if (!executeQuery("BEGIN;")) {
-        std::cerr << "Failed to begin transaction for hosts" << std::endl;
+        std::println(std::cerr, "Failed to begin transaction for hosts");
         return false;
     }
     
-    bool success = executeQuery(hostSQLStream.str());
+    // 使用参数化查询逐个插入，防止SQL注入
+    const char* paramValues[4];
+    int paramLengths[4];
+    int paramFormats[4];
     
-    // 提交或回滚事务
-    if (success) {
-        if (!executeQuery("COMMIT;")) {
-            std::cerr << "Failed to commit transaction for hosts" << std::endl;
-            success = false;
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        // 设置参数值
+        paramValues[0] = ip.c_str();
+        paramValues[1] = hostname.c_str();
+        std::string delayStr = std::to_string(delay);
+        paramValues[2] = delayStr.c_str();
+        std::string statusStr = successFlag ? "true" : "false";
+        paramValues[3] = statusStr.c_str();
+        
+        // 设置参数长度
+        paramLengths[0] = static_cast<int>(ip.length());
+        paramLengths[1] = static_cast<int>(hostname.length());
+        paramLengths[2] = static_cast<int>(delayStr.length());
+        paramLengths[3] = static_cast<int>(statusStr.length());
+        
+        // 设置参数格式（0表示文本格式）
+        paramFormats[0] = 0;
+        paramFormats[1] = 0;
+        paramFormats[2] = 0;
+        paramFormats[3] = 0;
+        
+        // 使用参数化查询
+        const char* insertSQL = "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) "
+                               "VALUES ($1, $2, NOW() AT TIME ZONE 'UTC', $4::boolean, $3::integer) "
+                               "ON CONFLICT (ip) DO UPDATE SET "
+                               "hostname = EXCLUDED.hostname, "
+                               "last_seen = EXCLUDED.last_seen, "
+                               "last_status = EXCLUDED.last_status, "
+                               "last_delay = EXCLUDED.last_delay;";
+        
+        PGresult* res = PQexecParams(conn, insertSQL, 4, nullptr, paramValues, paramLengths, paramFormats, 0);
+        
+        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+            std::println(std::cerr, "Failed to insert host record for IP {}: {}", ip, PQresultErrorMessage(res));
+            PQclear(res);
+            executeQuery("ROLLBACK;");
+            return false;
         }
-    } else {
-        executeQuery("ROLLBACK;");
+        PQclear(res);
     }
     
-    return success;
+    // 提交事务
+    if (!executeQuery("COMMIT;")) {
+        std::println(std::cerr, "Failed to commit transaction for hosts");
+        return false;
+    }
+    
+    return true;
 }
 
 // 辅助函数：批量插入ping结果
@@ -322,39 +344,63 @@ bool DatabaseManagerPG::insertPingResultsBatch(const std::vector<std::tuple<std:
         return true;
     }
     
-    // 构建批量插入语句到统一的ping_results表
-    std::ostringstream batchInsertSQLStream;
-    batchInsertSQLStream << "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES ";
-    
-    bool first = true;
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!first) batchInsertSQLStream << ", ";
-        batchInsertSQLStream << "(" << escapeString(ip) << ", " << escapeString(hostname) << ", " 
-                             << delay << ", " << (successFlag ? "true" : "false") << ", " 
-                             << escapeString(timestamp) << ")";
-        first = false;
-    }
-    batchInsertSQLStream << ";";
-    
     // 开始事务以提高性能
     if (!executeQuery("BEGIN;")) {
-        std::cerr << "Failed to begin transaction for ping results" << std::endl;
+        std::println(std::cerr, "Failed to begin transaction for ping results");
         return false;
     }
     
-    bool success = executeQuery(batchInsertSQLStream.str());
+    // 使用参数化查询逐个插入，防止SQL注入
+    const char* paramValues[5];
+    int paramLengths[5];
+    int paramFormats[5];
     
-    // 提交或回滚事务
-    if (success) {
-        if (!executeQuery("COMMIT;")) {
-            std::cerr << "Failed to commit transaction for ping results" << std::endl;
-            success = false;
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        // 设置参数值
+        paramValues[0] = ip.c_str();
+        paramValues[1] = hostname.c_str();
+        std::string delayStr = std::to_string(delay);
+        paramValues[2] = delayStr.c_str();
+        std::string statusStr = successFlag ? "true" : "false";
+        paramValues[3] = statusStr.c_str();
+        paramValues[4] = timestamp.c_str();
+        
+        // 设置参数长度
+        paramLengths[0] = static_cast<int>(ip.length());
+        paramLengths[1] = static_cast<int>(hostname.length());
+        paramLengths[2] = static_cast<int>(delayStr.length());
+        paramLengths[3] = static_cast<int>(statusStr.length());
+        paramLengths[4] = static_cast<int>(timestamp.length());
+        
+        // 设置参数格式（0表示文本格式）
+        paramFormats[0] = 0;
+        paramFormats[1] = 0;
+        paramFormats[2] = 0;
+        paramFormats[3] = 0;
+        paramFormats[4] = 0;
+        
+        // 使用参数化查询
+        const char* insertSQL = "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) "
+                               "VALUES ($1, $2, $3::integer, $4::boolean, $5)";
+        
+        PGresult* res = PQexecParams(conn, insertSQL, 5, nullptr, paramValues, paramLengths, paramFormats, 0);
+        
+        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+            std::println(std::cerr, "Failed to insert ping result for IP {}: {}", ip, PQresultErrorMessage(res));
+            PQclear(res);
+            executeQuery("ROLLBACK;");
+            return false;
         }
-    } else {
-        executeQuery("ROLLBACK;");
+        PQclear(res);
     }
     
-    return success;
+    // 提交事务
+    if (!executeQuery("COMMIT;")) {
+        std::println(std::cerr, "Failed to commit transaction for ping results");
+        return false;
+    }
+    
+    return true;
 }
 
 bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
@@ -394,17 +440,20 @@ bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::stri
 
 void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return;
     }
     
-    // 获取主机名
-    std::ostringstream hostQueryStream;
-    hostQueryStream << "SELECT hostname FROM hosts WHERE ip = " << escapeString(ip) << ";";
+    // 使用参数化查询获取主机名
+    const char* hostQuerySQL = "SELECT hostname FROM hosts WHERE ip = $1";
+    const char* paramValues[1] = { ip.c_str() };
+    int paramLengths[1] = { static_cast<int>(ip.length()) };
+    int paramFormats[1] = { 0 };
     
-    PGresult* hostRes = executeQueryWithResult(hostQueryStream.str());
-    if (!hostRes) {
-        std::cerr << "Failed to query host information" << std::endl;
+    PGresult* hostRes = PQexecParams(conn, hostQuerySQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (!hostRes || PQresultStatus(hostRes) != PGRES_TUPLES_OK) {
+        std::println(std::cerr, "Failed to query host information");
+        if (hostRes) PQclear(hostRes);
         return;
     }
     
@@ -417,128 +466,134 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
     }
     PQclear(hostRes);
     
-    std::cout << "Statistics for IP: " << ip << " (" << hostname << ")" << std::endl;
-    std::cout << "=========================================================" << std::endl;
+    std::println(std::cout, "Statistics for IP: {} ({})", ip, hostname);
+    std::println(std::cout, "=========================================================");
     
-    // 使用单个查询获取所有统计信息
-    std::ostringstream statsSQLStream;
-    statsSQLStream << "SELECT "
-                   << "COUNT(*) as total_records, "
-                   << "COUNT(*) FILTER (WHERE success = true) as success_count, "
-                   << "AVG(delay) FILTER (WHERE success = true) as avg_delay, "
-                   << "MAX(delay) FILTER (WHERE success = true) as max_delay, "
-                   << "MIN(delay) FILTER (WHERE success = true) as min_delay "
-                   << "FROM ping_results WHERE ip = " << escapeString(ip) << ";";
+    // 使用参数化查询获取统计信息
+    const char* statsSQL = "SELECT "
+                          "COUNT(*) as total_records, "
+                          "COUNT(*) FILTER (WHERE success = true) as success_count, "
+                          "AVG(delay) FILTER (WHERE success = true) as avg_delay, "
+                          "MAX(delay) FILTER (WHERE success = true) as max_delay, "
+                          "MIN(delay) FILTER (WHERE success = true) as min_delay "
+                          "FROM ping_results WHERE ip = $1";
     
-    PGresult* statsRes = executeQueryWithResult(statsSQLStream.str());
-    if (!statsRes) {
-        std::cerr << "Failed to query statistics" << std::endl;
+    PGresult* statsRes = PQexecParams(conn, statsSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (!statsRes || PQresultStatus(statsRes) != PGRES_TUPLES_OK) {
+        std::println(std::cerr, "Failed to query statistics");
+        if (statsRes) PQclear(statsRes);
         return;
     }
     
     if (PQntuples(statsRes) == 0) {
-        std::cout << "No ping records found for this IP." << std::endl;
+        std::println(std::cout, "No ping records found for this IP.");
         PQclear(statsRes);
         return;
     }
     
-    int totalRecords = atoi(PQgetvalue(statsRes, 0, 0));
-    int successCount = atoi(PQgetvalue(statsRes, 0, 1));
-    double avgDelay = (PQgetvalue(statsRes, 0, 2)) ? atof(PQgetvalue(statsRes, 0, 2)) : 0;
-    int maxDelay = (PQgetvalue(statsRes, 0, 3)) ? atoi(PQgetvalue(statsRes, 0, 3)) : 0;
-    int minDelay = (PQgetvalue(statsRes, 0, 4)) ? atoi(PQgetvalue(statsRes, 0, 4)) : 0;
+    int totalRecords = std::atoi(PQgetvalue(statsRes, 0, 0));
+    int successCount = std::atoi(PQgetvalue(statsRes, 0, 1));
+    double avgDelay = (PQgetvalue(statsRes, 0, 2)) ? std::atof(PQgetvalue(statsRes, 0, 2)) : 0;
+    int maxDelay = (PQgetvalue(statsRes, 0, 3)) ? std::atoi(PQgetvalue(statsRes, 0, 3)) : 0;
+    int minDelay = (PQgetvalue(statsRes, 0, 4)) ? std::atoi(PQgetvalue(statsRes, 0, 4)) : 0;
     
     PQclear(statsRes);
     
-    std::cout << "Total ping records: " << totalRecords << std::endl;
+    std::println(std::cout, "Total ping records: {}", totalRecords);
     
     if (totalRecords == 0) {
-        std::cout << "No ping records found for this IP." << std::endl;
+        std::println(std::cout, "No ping records found for this IP.");
         return;
     }
     
     int failureCount = totalRecords - successCount;
-    double successRate = (totalRecords > 0) ? (double)successCount / totalRecords * 100 : 0;
-    double failureRate = (totalRecords > 0) ? (double)failureCount / totalRecords * 100 : 0;
+    double successRate = (totalRecords > 0) ? static_cast<double>(successCount) / totalRecords * 100 : 0;
+    double failureRate = (totalRecords > 0) ? static_cast<double>(failureCount) / totalRecords * 100 : 0;
     
-    std::cout << "Successful pings: " << successCount << std::endl;
-    std::cout << "Failed pings: " << failureCount << std::endl;
-    std::cout << "Success rate: " << std::fixed << std::setprecision(2) << successRate << "%" << std::endl;
-    std::cout << "Failure rate: " << std::fixed << std::setprecision(2) << failureRate << "%" << std::endl;
-    std::cout << "Average delay (successful pings): " << std::fixed << std::setprecision(2) << avgDelay << "ms" << std::endl;
-    std::cout << "Maximum delay (successful pings): " << maxDelay << "ms" << std::endl;
-    std::cout << "Minimum delay (successful pings): " << minDelay << "ms" << std::endl;
+    std::println(std::cout, "Successful pings: {}", successCount);
+    std::println(std::cout, "Failed pings: {}", failureCount);
+    std::println(std::cout, "Success rate: {:.2f}%", successRate);
+    std::println(std::cout, "Failure rate: {:.2f}%", failureRate);
+    std::println(std::cout, "Average delay (successful pings): {:.2f}ms", avgDelay);
+    std::println(std::cout, "Maximum delay (successful pings): {}ms", maxDelay);
+    std::println(std::cout, "Minimum delay (successful pings): {}ms", minDelay);
     
-    // 显示最近的10条记录
-    std::ostringstream recentSQLStream;
-    recentSQLStream << "SELECT delay, success, timestamp FROM ping_results WHERE ip = " 
-                    << escapeString(ip) << " ORDER BY timestamp DESC LIMIT 10;";
+    // 使用参数化查询获取最近的10条记录
+    const char* recentSQL = "SELECT delay, success, timestamp FROM ping_results WHERE ip = $1 ORDER BY timestamp DESC LIMIT 10";
     
-    PGresult* recentRes = executeQueryWithResult(recentSQLStream.str());
-    if (!recentRes) {
-        std::cerr << "Failed to query recent records" << std::endl;
+    PGresult* recentRes = PQexecParams(conn, recentSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (!recentRes || PQresultStatus(recentRes) != PGRES_TUPLES_OK) {
+        std::println(std::cerr, "Failed to query recent records");
+        if (recentRes) PQclear(recentRes);
         return;
     }
     
-    std::cout << "\nRecent ping records (last 10):" << std::endl;
-    std::cout << "Timestamp           \tDelay\tStatus" << std::endl;
-    std::cout << "--------------------------------------------------------" << std::endl;
+    std::println(std::cout, "\nRecent ping records (last 10):");
+    std::println(std::cout, "Timestamp           \tDelay\tStatus");
+    std::println(std::cout, "--------------------------------------------------------");
     
     for (int i = 0; i < PQntuples(recentRes); i++) {
         char* timestamp = PQgetvalue(recentRes, i, 2);
         char* delay = PQgetvalue(recentRes, i, 0);
         char* success = PQgetvalue(recentRes, i, 1);
         
-        std::cout << (timestamp ? timestamp : "N/A") << "\t" 
-                  << (delay ? delay : "N/A") << "ms\t" 
-                  << (success && strcmp(success, "t") == 0 ? "Success" : "Failed") << std::endl;
+        std::println(std::cout, "{}\t{}ms\t{}", 
+                     timestamp ? timestamp : "N/A",
+                     delay ? delay : "N/A",
+                     (success && std::strcmp(success, "t") == 0 ? "Success" : "Failed"));
     }
     PQclear(recentRes);
 }
 
 void DatabaseManagerPG::cleanupOldData(int days) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return;
     }
     
-    std::cout << "Cleaning up data older than " << days << " days..." << std::endl;
+    std::println(std::cout, "Cleaning up data older than {} days...", days);
     
-    // 从统一的ping_results表中删除指定天数之前的数据
-    std::ostringstream deleteSQLStream;
-    deleteSQLStream << "DELETE FROM ping_results WHERE timestamp < NOW() - INTERVAL '" << days << " days';";
+    // 使用参数化查询从统一的ping_results表中删除指定天数之前的数据
+    const char* deleteSQL = "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
+    std::string daysStr = std::to_string(days);
+    const char* paramValues[1] = { daysStr.c_str() };
+    int paramLengths[1] = { static_cast<int>(daysStr.length()) };
+    int paramFormats[1] = { 0 };
     
-    PGresult* deleteRes = PQexec(conn, deleteSQLStream.str().c_str());
+    PGresult* deleteRes = PQexecParams(conn, deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
-        std::cerr << "Failed to delete old data: " << PQresultErrorMessage(deleteRes) << std::endl;
+        std::println(std::cerr, "Failed to delete old data: {}", PQresultErrorMessage(deleteRes));
         PQclear(deleteRes);
         return;
     }
     
-    int totalDeleted = atoi(PQcmdTuples(deleteRes));
+    int totalDeleted = std::atoi(PQcmdTuples(deleteRes));
     PQclear(deleteRes);
     
-    std::cout << "Deleted " << totalDeleted << " old records from ping_results table" << std::endl;
+    std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
     
-    // 清理hosts表中长时间未见的数据（超过2倍保留天数）
-    std::ostringstream cleanupHostsSQLStream;
-    cleanupHostsSQLStream << "DELETE FROM hosts WHERE last_seen < NOW() - INTERVAL '" << (days * 2) << " days';";
+    // 使用参数化查询清理hosts表中长时间未见的数据（超过2倍保留天数）
+    std::string cleanupDaysStr = std::to_string(days * 2);
+    const char* cleanupParamValues[1] = { cleanupDaysStr.c_str() };
+    int cleanupParamLengths[1] = { static_cast<int>(cleanupDaysStr.length()) };
     
-    PGresult* cleanupHostsRes = PQexec(conn, cleanupHostsSQLStream.str().c_str());
+    const char* cleanupHostsSQL = "DELETE FROM hosts WHERE last_seen < NOW() - ($1 * INTERVAL '1 day')";
+    PGresult* cleanupHostsRes = PQexecParams(conn, cleanupHostsSQL, 1, nullptr, cleanupParamValues, cleanupParamLengths, paramFormats, 0);
+    
     if (PQresultStatus(cleanupHostsRes) != PGRES_COMMAND_OK) {
-        std::cerr << "Failed to cleanup old hosts: " << PQresultErrorMessage(cleanupHostsRes) << std::endl;
+        std::println(std::cerr, "Failed to cleanup old hosts: {}", PQresultErrorMessage(cleanupHostsRes));
         PQclear(cleanupHostsRes);
         return;
     }
     
-    int hostsDeleted = atoi(PQcmdTuples(cleanupHostsRes));
+    int hostsDeleted = std::atoi(PQcmdTuples(cleanupHostsRes));
     PQclear(cleanupHostsRes);
     
     if (hostsDeleted > 0) {
-        std::cout << "Deleted " << hostsDeleted << " old host records" << std::endl;
+        std::println(std::cout, "Deleted {} old host records", hostsDeleted);
     }
     
-    std::cout << "Cleanup completed." << std::endl;
+    std::println(std::cout, "Cleanup completed.");
 }
 
 std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
@@ -573,44 +628,66 @@ std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
 
 bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostname) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return false;
     }
     
     // 验证IP地址格式
     if (!isValidIP(ip)) {
-        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
     
-    // 插入或更新告警记录
-    std::ostringstream alertSQLStream;
-    alertSQLStream << "INSERT INTO alerts (ip, hostname, created_time) VALUES (" 
-                   << escapeString(ip) << ", " << escapeString(hostname) << ", NOW() AT TIME ZONE 'UTC')"
-                   << " ON CONFLICT (ip) DO NOTHING;";
+    // 使用参数化查询插入或更新告警记录
+    const char* paramValues[2];
+    int paramLengths[2];
+    int paramFormats[2];
     
-    return executeQuery(alertSQLStream.str());
+    paramValues[0] = ip.c_str();
+    paramValues[1] = hostname.c_str();
+    paramLengths[0] = static_cast<int>(ip.length());
+    paramLengths[1] = static_cast<int>(hostname.length());
+    paramFormats[0] = 0;
+    paramFormats[1] = 0;
+    
+    const char* insertSQL = "INSERT INTO alerts (ip, hostname, created_time) "
+                           "VALUES ($1, $2, NOW() AT TIME ZONE 'UTC') "
+                           "ON CONFLICT (ip) DO NOTHING";
+    
+    PGresult* res = PQexecParams(conn, insertSQL, 2, nullptr, paramValues, paramLengths, paramFormats, 0);
+    
+    if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to add alert for IP {}: {}", ip, res ? PQresultErrorMessage(res) : "Unknown error");
+        if (res) PQclear(res);
+        return false;
+    }
+    
+    PQclear(res);
+    return true;
 }
 
 bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return false;
     }
     
     // 验证IP地址格式
     if (!isValidIP(ip)) {
-        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
     
-    // 获取告警信息，用于写入恢复记录
-    std::ostringstream selectAlertSQLStream;
-    selectAlertSQLStream << "SELECT hostname, created_time FROM alerts WHERE ip = " << escapeString(ip) << ";";
+    // 使用参数化查询获取告警信息，用于写入恢复记录
+    const char* selectSQL = "SELECT hostname, created_time FROM alerts WHERE ip = $1";
+    const char* paramValues[1] = { ip.c_str() };
+    int paramLengths[1] = { static_cast<int>(ip.length()) };
+    int paramFormats[1] = { 0 };
     
-    PGresult* selectRes = executeQueryWithResult(selectAlertSQLStream.str());
-    if (!selectRes) {
-        std::cerr << "Failed to query alert information for IP: " << ip << std::endl;
+    PGresult* selectRes = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (!selectRes || PQresultStatus(selectRes) != PGRES_TUPLES_OK) {
+        std::println(std::cerr, "Failed to query alert information for IP: {}", ip);
+        if (selectRes) PQclear(selectRes);
         return false;
     }
     
@@ -627,25 +704,45 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     }
     PQclear(selectRes);
     
-    // 从告警表中删除记录
-    std::ostringstream alertSQLStream;
-    alertSQLStream << "DELETE FROM alerts WHERE ip = " << escapeString(ip) << ";";
+    // 使用参数化查询从告警表中删除记录
+    const char* deleteSQL = "DELETE FROM alerts WHERE ip = $1";
+    PGresult* deleteRes = PQexecParams(conn, deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     
-    if (!executeQuery(alertSQLStream.str())) {
+    if (!deleteRes || PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to remove alert for IP: {}", ip);
+        if (deleteRes) PQclear(deleteRes);
         return false;
     }
+    PQclear(deleteRes);
     
     // 如果找到了告警记录，将其写入恢复记录表
     if (!hostname.empty() && !alertTime.empty()) {
-        std::ostringstream insertRecoverySQLStream;
-        insertRecoverySQLStream << "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) VALUES ("
-                                << escapeString(ip) << ", " << escapeString(hostname) << ", " 
-                                << escapeString(alertTime) << ", NOW() AT TIME ZONE 'UTC');";
+        const char* insertRecoveryParamValues[3];
+        int insertRecoveryParamLengths[3];
+        int insertRecoveryParamFormats[3];
         
-        if (!executeQuery(insertRecoverySQLStream.str())) {
-            std::cerr << "Failed to insert recovery record for IP: " << ip << std::endl;
+        insertRecoveryParamValues[0] = ip.c_str();
+        insertRecoveryParamValues[1] = hostname.c_str();
+        insertRecoveryParamValues[2] = alertTime.c_str();
+        insertRecoveryParamLengths[0] = static_cast<int>(ip.length());
+        insertRecoveryParamLengths[1] = static_cast<int>(hostname.length());
+        insertRecoveryParamLengths[2] = static_cast<int>(alertTime.length());
+        insertRecoveryParamFormats[0] = 0;
+        insertRecoveryParamFormats[1] = 0;
+        insertRecoveryParamFormats[2] = 0;
+        
+        const char* insertRecoverySQL = "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) "
+                                       "VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')";
+        
+        PGresult* insertRes = PQexecParams(conn, insertRecoverySQL, 3, nullptr, 
+                                           insertRecoveryParamValues, insertRecoveryParamLengths, insertRecoveryParamFormats, 0);
+        
+        if (!insertRes || PQresultStatus(insertRes) != PGRES_COMMAND_OK) {
+            std::println(std::cerr, "Failed to insert recovery record for IP: {}", ip);
+            if (insertRes) PQclear(insertRes);
             return false;
         }
+        PQclear(insertRes);
     }
     
     return true;
@@ -655,25 +752,31 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
     
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return alerts;
     }
     
+    PGresult* res = nullptr;
+    
     // 查询活动告警，按创建时间排序
-    std::string selectAlertsSQL;
     if (days >= 0) {
-        // 查询指定天数内的告警
-        std::ostringstream sqlStream;
-        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - INTERVAL '" << days << " days' ORDER BY created_time DESC;";
-        selectAlertsSQL = sqlStream.str();
+        // 使用参数化查询指定天数内的告警
+        const char* selectSQL = "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - ($1 * INTERVAL '1 day') ORDER BY created_time DESC";
+        std::string daysStr = std::to_string(days);
+        const char* paramValues[1] = { daysStr.c_str() };
+        int paramLengths[1] = { static_cast<int>(daysStr.length()) };
+        int paramFormats[1] = { 0 };
+        
+        res = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     } else {
         // 查询所有告警
-        selectAlertsSQL = "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC;";
+        const char* selectSQL = "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC";
+        res = PQexec(conn, selectSQL);
     }
     
-    PGresult* res = executeQueryWithResult(selectAlertsSQL);
-    if (!res) {
-        std::cerr << "Failed to query alerts" << std::endl;
+    if (!res || (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK)) {
+        std::println(std::cerr, "Failed to query alerts");
+        if (res) PQclear(res);
         return alerts;
     }
     
@@ -700,25 +803,31 @@ std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
     
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return records;
     }
     
+    PGresult* res = nullptr;
+    
     // 查询恢复记录，按恢复时间排序
-    std::string selectRecordsSQL;
     if (days >= 0) {
-        // 查询指定天数内的恢复记录
-        std::ostringstream sqlStream;
-        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= NOW() - INTERVAL '" << days << " days' ORDER BY recovery_time DESC;";
-        selectRecordsSQL = sqlStream.str();
+        // 使用参数化查询指定天数内的恢复记录
+        const char* selectSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= NOW() - ($1 * INTERVAL '1 day') ORDER BY recovery_time DESC";
+        std::string daysStr = std::to_string(days);
+        const char* paramValues[1] = { daysStr.c_str() };
+        int paramLengths[1] = { static_cast<int>(daysStr.length()) };
+        int paramFormats[1] = { 0 };
+        
+        res = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     } else {
         // 查询所有恢复记录
-        selectRecordsSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY recovery_time DESC;";
+        const char* selectSQL = "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY recovery_time DESC";
+        res = PQexec(conn, selectSQL);
     }
     
-    PGresult* res = executeQueryWithResult(selectRecordsSQL);
-    if (!res) {
-        std::cerr << "Failed to query recovery records" << std::endl;
+    if (!res || (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK)) {
+        std::println(std::cerr, "Failed to query recovery records");
+        if (res) PQclear(res);
         return records;
     }
     
@@ -726,7 +835,7 @@ std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
     records.reserve(PQntuples(res));
     
     for (int row = 0; row < PQntuples(res); row++) {
-        int id = atoi(PQgetvalue(res, row, 0));
+        int id = std::atoi(PQgetvalue(res, row, 0));
         char* ip = PQgetvalue(res, row, 1);
         char* hostname = PQgetvalue(res, row, 2);
         char* alert_time = PQgetvalue(res, row, 3);
