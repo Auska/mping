@@ -26,9 +26,6 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation directory" FORCE)
 endif()
 
-# Configure version header file
-configure_file(project_info.h.in project_info.h @ONLY)
-
 # 选项：选择数据库后端 (SQLite 或 PostgreSQL)
 option(USE_POSTGRESQL "Use PostgreSQL database (default is SQLite)" OFF)
 
@@ -83,6 +80,18 @@ if(BUILD_TESTS)
     target_link_libraries(mping_tests PRIVATE Catch2::Catch2WithMain)
     target_include_directories(mping_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR})
     
+    # Add compile definitions for version information
+    target_compile_definitions(mping_tests PRIVATE 
+        PROJECT_NAME="${PROJECT_NAME}"
+        PROJECT_VERSION="${PROJECT_VERSION}"
+        PROJECT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+        PROJECT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+        PROJECT_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+        PROJECT_DESCRIPTION="${PROJECT_DESCRIPTION}"
+        PROJECT_HOMEPAGE_URL="${PROJECT_HOMEPAGE_URL}"
+        COMPILE_TIME="${COMPILE_TIME}"
+    )
+    
     if(NOT USE_POSTGRESQL)
         find_package(SQLite3 REQUIRED)
         target_sources(mping_tests PRIVATE
@@ -112,35 +121,22 @@ if(BUILD_TESTS)
     include(CTest)
     include(Catch)
     catch_discover_tests(mping_tests)
-
-    # Legacy test executables (for backward compatibility, SQLite only)
-    if(NOT USE_POSTGRESQL)
-        add_executable(test_sqlite_alerts tests/test_sqlite_alerts.cpp src/database_manager.cpp src/utils.cpp)
-        target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
-        
-        add_executable(test_timezone tests/test_timezone.cpp src/database_manager.cpp src/utils.cpp)
-        target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
-        
-        add_executable(test_alert_persistence tests/test_alert_persistence.cpp src/database_manager.cpp src/utils.cpp)
-        target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
-        
-        add_executable(test_recovery_records tests/test_recovery_records.cpp src/database_manager.cpp src/utils.cpp)
-        target_link_libraries(test_recovery_records PRIVATE Threads::Threads SQLite::SQLite3)
-        
-        add_executable(test_query_recovery tests/test_query_recovery.cpp src/database_manager.cpp src/utils.cpp)
-        target_link_libraries(test_query_recovery PRIVATE Threads::Threads SQLite::SQLite3)
-    endif()
-    
-    if(USE_POSTGRESQL)
-        add_executable(test_pg tests/test_pg.cpp src/database_manager_pg.cpp src/utils.cpp)
-        target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
-        target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
-        target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
-    endif()
 endif()
 
 # Include the directory where project_info.h is generated
-target_include_directories(mping PRIVATE ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(mping PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# Add compile definitions for version information
+target_compile_definitions(mping PRIVATE 
+    PROJECT_NAME="${PROJECT_NAME}"
+    PROJECT_VERSION="${PROJECT_VERSION}"
+    PROJECT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    PROJECT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    PROJECT_VERSION_PATCH=${PROJECT_VERSION_PATCH}
+    PROJECT_DESCRIPTION="${PROJECT_DESCRIPTION}"
+    PROJECT_HOMEPAGE_URL="${PROJECT_HOMEPAGE_URL}"
+    COMPILE_TIME="${COMPILE_TIME}"
+)
 
 # Add compile definitions for version information
 target_compile_definitions(mping PRIVATE 
@@ -174,27 +170,9 @@ if(USE_POSTGRESQL)
     target_link_libraries(mping PRIVATE Threads::Threads ${PQ_LDFLAGS})
     target_include_directories(mping PRIVATE ${PQ_INCLUDE_DIRS})
     target_compile_options(mping PRIVATE ${PQ_CFLAGS_OTHER})
-    
-    # Link libraries for test executables (only when explicitly requested)
-    if(BUILD_TESTS)
-        target_link_libraries(test_pg PRIVATE Threads::Threads ${PQ_LDFLAGS})
-        target_include_directories(test_pg PRIVATE ${PQ_INCLUDE_DIRS})
-        target_compile_options(test_pg PRIVATE ${PQ_CFLAGS_OTHER})
-    endif()
 else()
     target_link_libraries(mping PRIVATE Threads::Threads SQLite::SQLite3)
-    if(BUILD_TESTS)
-        target_link_libraries(test_sqlite_alerts PRIVATE Threads::Threads SQLite::SQLite3)
-        target_link_libraries(test_timezone PRIVATE Threads::Threads SQLite::SQLite3)
-        target_link_libraries(test_alert_persistence PRIVATE Threads::Threads SQLite::SQLite3)
-        target_link_libraries(test_recovery_records PRIVATE Threads::Threads SQLite::SQLite3)
-        target_link_libraries(test_query_recovery PRIVATE Threads::Threads SQLite::SQLite3)
-    endif()
 endif()
 
 # Install rules
 install(TARGETS mping RUNTIME DESTINATION bin)
-
-# 添加pkg-config文件支持
-configure_file(mping.pc.in mping.pc @ONLY)
-install(FILES ${CMAKE_BINARY_DIR}/mping.pc DESTINATION lib/pkgconfig)

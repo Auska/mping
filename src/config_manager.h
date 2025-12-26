@@ -4,7 +4,6 @@
 #include <string>
 #include <map>
 #include <getopt.h>
-#include "project_info.h"
 
 class ConfigManager {
 public:
