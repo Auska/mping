@@ -6,6 +6,7 @@
 #include <vector>
 #include <tuple>
 #include <map>
+#include <mutex>
 #include <libpq-fe.h>
 
 // 数据库管理类，用于处理PostgreSQL数据库操作
@@ -13,6 +14,7 @@ class DatabaseManagerPG : public DatabaseInterface {
 private:
     std::string connInfo;
     PGconn* conn;
+    std::mutex dbMutex;  // 互斥锁，用于线程安全
     
     // 验证IP地址格式
     bool isValidIP(const std::string& ip);

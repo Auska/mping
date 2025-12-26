@@ -7,6 +7,7 @@
 #include <cctype>
 #include <iomanip>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <stdexcept>
 #include <vector>
@@ -38,6 +39,7 @@ bool DatabaseManager::isValidIP(const std::string& ip) {
 }
 
 bool DatabaseManager::initialize() {
+    std::lock_guard<std::mutex> lock(dbMutex);
     int rc = sqlite3_open(dbPath.c_str(), &db);
     if (rc) {
         std::string errorMsg = "Can't open database: ";
@@ -184,10 +186,10 @@ bool DatabaseManager::createIPTable(const std::string& ip) {
 bool DatabaseManager::insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp) {
     // 验证IP地址格式
     if (!isValidIP(ip)) {
-        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
-    
+
     // 创建一个包含单个结果的向量并调用批量插入函数
     std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results;
     results.emplace_back(ip, hostname, delay, success, timestamp);
@@ -199,7 +201,7 @@ bool DatabaseManager::validateAndPrepareIPs(const std::vector<std::tuple<std::st
     // 验证所有IP地址格式
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         if (!isValidIP(ip)) {
-            std::cerr << "Invalid IP address format: " << ip << std::endl;
+            std::println(std::cerr, "Invalid IP address format: {}", ip);
             return false;
         }
     }
@@ -219,7 +221,9 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
     if (results.empty()) {
         return true;
     }
-    
+
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     // 使用批量插入优化性能
     const char* upsertHostSQL = R"(
         INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay)
@@ -230,19 +234,19 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
         last_status = excluded.last_status,
         last_delay = excluded.last_delay;
     )";
-    
+
     sqlite3_stmt* hostStmt;
     int rc = sqlite3_prepare_v2(db, upsertHostSQL, -1, &hostStmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare host statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare host statement: {}", sqlite3_errmsg(db));
         return false;
     }
-    
+
     bool success = true;
     // 开始事务以提高性能
     rc = sqlite3_exec(db, "BEGIN;", 0, 0, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to begin transaction for hosts: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to begin transaction for hosts: {}", sqlite3_errmsg(db));
         sqlite3_finalize(hostStmt);
         return false;
     }
@@ -256,26 +260,26 @@ bool DatabaseManager::upsertHosts(const std::vector<std::tuple<std::string, std:
         
         rc = sqlite3_step(hostStmt);
         if (rc != SQLITE_DONE) {
-            std::cerr << "Failed to execute host statement: " << sqlite3_errmsg(db) << std::endl;
+            std::println(std::cerr, "Failed to execute host statement: {}", sqlite3_errmsg(db));
             success = false;
             break;
         }
-        
+
         // 重置语句以供下一次使用
         sqlite3_reset(hostStmt);
     }
-    
+
     // 提交或回滚事务
     if (success) {
         rc = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
         if (rc != SQLITE_OK) {
-            std::cerr << "Failed to commit transaction for hosts: " << sqlite3_errmsg(db) << std::endl;
+            std::println(std::cerr, "Failed to commit transaction for hosts: {}", sqlite3_errmsg(db));
             success = false;
         }
     } else {
         sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
     }
-    
+
     sqlite3_finalize(hostStmt);
     return success;
 }
@@ -291,20 +295,20 @@ bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::s
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, insertSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare ping results insert statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare ping results insert statement: {}", sqlite3_errmsg(db));
         return false;
     }
-    
+
     bool success = true;
-    
+
     // 开始事务以提高性能
     rc = sqlite3_exec(db, "BEGIN;", 0, 0, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to begin transaction for ping results: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to begin transaction for ping results: {}", sqlite3_errmsg(db));
         sqlite3_finalize(stmt);
         return false;
     }
-    
+
     // 为每个结果执行插入
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
@@ -312,29 +316,29 @@ bool DatabaseManager::insertPingResultsBatch(const std::vector<std::tuple<std::s
         sqlite3_bind_int(stmt, 3, delay);
         sqlite3_bind_int(stmt, 4, successFlag ? 1 : 0);
         sqlite3_bind_text(stmt, 5, timestamp.c_str(), -1, SQLITE_STATIC);
-        
+
         rc = sqlite3_step(stmt);
         if (rc != SQLITE_DONE) {
-            std::cerr << "Failed to execute ping results insert statement: " << sqlite3_errmsg(db) << std::endl;
+            std::println(std::cerr, "Failed to execute ping results insert statement: {}", sqlite3_errmsg(db));
             success = false;
             break;
         }
-        
+
         // 重置语句以供下一次使用
         sqlite3_reset(stmt);
     }
-    
+
     // 提交或回滚事务
     if (success) {
         rc = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
         if (rc != SQLITE_OK) {
-            std::cerr << "Failed to commit transaction for ping results: " << sqlite3_errmsg(db) << std::endl;
+            std::println(std::cerr, "Failed to commit transaction for ping results: {}", sqlite3_errmsg(db));
             success = false;
         }
     } else {
         sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
     }
-    
+
     sqlite3_finalize(stmt);
     return success;
 }
@@ -370,20 +374,22 @@ bool DatabaseManager::insertPingResults(const std::vector<std::tuple<std::string
 }
 
 void DatabaseManager::queryIPStatistics(const std::string& ip) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return;
     }
-    
+
     // 获取主机名
     const char* selectHostSQL = "SELECT hostname FROM hosts WHERE ip = ?;";
     sqlite3_stmt* hostStmt;
     int rc = sqlite3_prepare_v2(db, selectHostSQL, -1, &hostStmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare host query statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare host query statement: {}", sqlite3_errmsg(db));
         return;
     }
-    
+
     sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
     std::string hostname = "";
     if (sqlite3_step(hostStmt) == SQLITE_ROW) {
@@ -393,9 +399,9 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
         }
     }
     sqlite3_finalize(hostStmt);
-    
-    std::cout << "Statistics for IP: " << ip << " (" << hostname << ")" << std::endl;
-    std::cout << "=========================================================" << std::endl;
+
+    std::println(std::cout, "Statistics for IP: {} ({})", ip, hostname);
+    std::println(std::cout, "=========================================================");
     
     // 使用单个查询获取所有统计信息
     const char* statsSQL = R"(
@@ -478,37 +484,39 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
 }
 
 void DatabaseManager::cleanupOldData(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return;
     }
-    
-    std::cout << "Cleaning up data older than " << days << " days..." << std::endl;
-    
+
+    std::println(std::cout, "Cleaning up data older than {} days...", days);
+
     // 从统一的ping_results表中删除指定天数之前的数据
     std::ostringstream deleteSQLStream;
     deleteSQLStream << "DELETE FROM ping_results WHERE timestamp < datetime('now', '-" << days << " days');";
     std::string deleteSQL = deleteSQLStream.str();
-    
+
     char* errMsg = 0;
     int rc = sqlite3_exec(db, deleteSQL.c_str(), 0, 0, &errMsg);
     if (rc != SQLITE_OK) {
-        std::cerr << "SQL error deleting old data from ping_results table: " << errMsg << std::endl;
+        std::println(std::cerr, "SQL error deleting old data from ping_results table: {}", errMsg);
         sqlite3_free(errMsg);
         return;
     }
-    
+
     int totalDeleted = sqlite3_changes(db);
-    std::cout << "Deleted " << totalDeleted << " old records from ping_results table" << std::endl;
-    
+    std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
+
     // 清理hosts表中长时间未见的数据（超过2倍保留天数）
     std::ostringstream cleanupHostsSQLStream;
     cleanupHostsSQLStream << "DELETE FROM hosts WHERE last_seen < datetime('now', '-" << (days * 2) << " days');";
     std::string cleanupHostsSQL = cleanupHostsSQLStream.str();
-    
+
     rc = sqlite3_exec(db, cleanupHostsSQL.c_str(), 0, 0, &errMsg);
     if (rc != SQLITE_OK) {
-        std::cerr << "SQL error cleaning hosts table: " << errMsg << std::endl;
+        std::println(std::cerr, "SQL error cleaning hosts table: {}", errMsg);
         sqlite3_free(errMsg);
     } else {
         int deletedHosts = sqlite3_changes(db);
@@ -516,24 +524,25 @@ void DatabaseManager::cleanupOldData(int days) {
             std::cout << "Deleted " << deletedHosts << " old host records" << std::endl;
         }
     }
-    
-    std::cout << "Cleanup completed." << std::endl;
+
+    std::println(std::cout, "Cleanup completed.");
 }
 
 std::map<std::string, std::string> DatabaseManager::getAllHosts() {
+    std::lock_guard<std::mutex> lock(dbMutex);
     std::map<std::string, std::string> hosts;
-    
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return hosts;
     }
-    
+
     // 查询所有主机，按IP排序以提高查询效率
     const char* selectHostsSQL = "SELECT ip, hostname FROM hosts ORDER BY ip;";
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, selectHostsSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare hosts query statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare hosts query statement: {}", sqlite3_errmsg(db));
         return hosts;
     }
     
@@ -553,63 +562,67 @@ std::map<std::string, std::string> DatabaseManager::getAllHosts() {
 }
 
 bool DatabaseManager::addAlert(const std::string& ip, const std::string& hostname) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return false;
     }
-    
+
     // 验证IP地址格式
     if (!isValidIP(ip)) {
-        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
-    
+
     // 插入或更新告警记录
     const char* insertAlertSQL = R"(
         INSERT INTO alerts (ip, hostname, created_time)
         VALUES (?, ?, datetime('now', 'utc'))
         ON CONFLICT(ip) DO NOTHING;
     )";
-    
+
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, insertAlertSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare alert insert statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare alert insert statement: {}", sqlite3_errmsg(db));
         return false;
     }
-    
+
     sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
     
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    
+
     if (rc != SQLITE_DONE) {
-        std::cerr << "Failed to execute alert insert statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to execute alert insert statement: {}", sqlite3_errmsg(db));
         return false;
     }
-    
+
     return true;
 }
 
 bool DatabaseManager::removeAlert(const std::string& ip) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return false;
     }
-    
+
     // 验证IP地址格式
     if (!isValidIP(ip)) {
-        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
-    
+
     // 获取告警信息，用于写入恢复记录
     const char* selectAlertSQL = "SELECT hostname, created_time FROM alerts WHERE ip = ?;";
     sqlite3_stmt* selectStmt;
     int rc = sqlite3_prepare_v2(db, selectAlertSQL, -1, &selectStmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare alert select statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare alert select statement: {}", sqlite3_errmsg(db));
         return false;
     }
     
@@ -627,65 +640,66 @@ bool DatabaseManager::removeAlert(const std::string& ip) {
         }
     }
     sqlite3_finalize(selectStmt);
-    
+
     // 从告警表中删除记录
     const char* deleteAlertSQL = "DELETE FROM alerts WHERE ip = ?;";
-    
+
     sqlite3_stmt* stmt;
     rc = sqlite3_prepare_v2(db, deleteAlertSQL, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare alert delete statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to prepare alert delete statement: {}", sqlite3_errmsg(db));
         return false;
     }
-    
+
     sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-    
+
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    
+
     if (rc != SQLITE_DONE) {
-        std::cerr << "Failed to execute alert delete statement: " << sqlite3_errmsg(db) << std::endl;
+        std::println(std::cerr, "Failed to execute alert delete statement: {}", sqlite3_errmsg(db));
         return false;
     }
-    
+
     // 如果找到了告警记录，将其写入恢复记录表
     if (!hostname.empty() && !alertTime.empty()) {
         const char* insertRecoverySQL = R"(
             INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time)
             VALUES (?, ?, ?, datetime('now', 'utc'));
         )";
-        
+
         sqlite3_stmt* insertStmt;
         rc = sqlite3_prepare_v2(db, insertRecoverySQL, -1, &insertStmt, 0);
         if (rc != SQLITE_OK) {
-            std::cerr << "Failed to prepare recovery record insert statement: " << sqlite3_errmsg(db) << std::endl;
+            std::println(std::cerr, "Failed to prepare recovery record insert statement: {}", sqlite3_errmsg(db));
             return false;
         }
-        
+
         sqlite3_bind_text(insertStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(insertStmt, 2, hostname.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(insertStmt, 3, alertTime.c_str(), -1, SQLITE_STATIC);
-        
+
         rc = sqlite3_step(insertStmt);
         sqlite3_finalize(insertStmt);
-        
+
         if (rc != SQLITE_DONE) {
-            std::cerr << "Failed to execute recovery record insert statement: " << sqlite3_errmsg(db) << std::endl;
+            std::println(std::cerr, "Failed to execute recovery record insert statement: {}", sqlite3_errmsg(db));
             return false;
         }
     }
-    
+
     return true;
 }
 
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::getActiveAlerts(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
-    
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return alerts;
     }
-    
+
     // 查询活动告警，按创建时间排序
     std::string selectAlertsSQL;
     if (days >= 0) {
@@ -724,14 +738,16 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     sqlite3_finalize(stmt);
     return alerts;
 }
+
 std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManager::getRecoveryRecords(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
-    
+
     if (!db) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return records;
     }
-    
+
     // 查询恢复记录，按恢复时间排序
     std::string selectRecordsSQL;
     if (days >= 0) {

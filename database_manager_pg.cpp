@@ -7,6 +7,7 @@
 #include <cctype>
 #include <iomanip>
 #include <map>
+#include <mutex>
 #include <regex>
 #include <stdexcept>
 #include <cstring>
@@ -130,8 +131,10 @@ bool DatabaseManagerPG::checkConnection() {
 }
 
 bool DatabaseManagerPG::initialize() {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     conn = PQconnectdb(connInfo.c_str());
-    
+
     if (PQstatus(conn) != CONNECTION_OK) {
         std::println(std::cerr, "Failed to connect to database: {}", PQerrorMessage(conn));
         return false;
@@ -257,7 +260,7 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
 bool DatabaseManagerPG::validateIPs(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
     for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
         if (!isValidIP(ip)) {
-            std::cerr << "Invalid IP address format: " << ip << std::endl;
+            std::println(std::cerr, "Invalid IP address format: {}", ip);
             return false;
         }
     }
@@ -276,13 +279,15 @@ bool DatabaseManagerPG::insertHostsBatch(const std::vector<std::tuple<std::strin
     if (results.empty()) {
         return true;
     }
-    
+
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     // 开始事务以提高性能
     if (!executeQuery("BEGIN;")) {
         std::println(std::cerr, "Failed to begin transaction for hosts");
         return false;
     }
-    
+
     // 使用参数化查询逐个插入，防止SQL注入
     const char* paramValues[4];
     int paramLengths[4];
@@ -343,13 +348,15 @@ bool DatabaseManagerPG::insertPingResultsBatch(const std::vector<std::tuple<std:
     if (results.empty()) {
         return true;
     }
-    
+
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     // 开始事务以提高性能
     if (!executeQuery("BEGIN;")) {
         std::println(std::cerr, "Failed to begin transaction for ping results");
         return false;
     }
-    
+
     // 使用参数化查询逐个插入，防止SQL注入
     const char* paramValues[5];
     int paramLengths[5];
@@ -439,17 +446,19 @@ bool DatabaseManagerPG::insertPingResults(const std::vector<std::tuple<std::stri
 }
 
 void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return;
     }
-    
+
     // 使用参数化查询获取主机名
     const char* hostQuerySQL = "SELECT hostname FROM hosts WHERE ip = $1";
     const char* paramValues[1] = { ip.c_str() };
     int paramLengths[1] = { static_cast<int>(ip.length()) };
     int paramFormats[1] = { 0 };
-    
+
     PGresult* hostRes = PQexecParams(conn, hostQuerySQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (!hostRes || PQresultStatus(hostRes) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query host information");
@@ -546,13 +555,15 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
 }
 
 void DatabaseManagerPG::cleanupOldData(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return;
     }
-    
+
     std::println(std::cout, "Cleaning up data older than {} days...", days);
-    
+
     // 使用参数化查询从统一的ping_results表中删除指定天数之前的数据
     const char* deleteSQL = "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
     std::string daysStr = std::to_string(days);
@@ -597,63 +608,66 @@ void DatabaseManagerPG::cleanupOldData(int days) {
 }
 
 std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
+    std::lock_guard<std::mutex> lock(dbMutex);
     std::map<std::string, std::string> hosts;
-    
+
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return hosts;
     }
-    
+
     // 查询所有主机，按IP排序以提高查询效率
     PGresult* res = executeQueryWithResult("SELECT ip, hostname FROM hosts ORDER BY ip;");
     if (!res) {
-        std::cerr << "Failed to query hosts" << std::endl;
+        std::println(std::cerr, "Failed to query hosts");
         return hosts;
     }
-    
+
     for (int row = 0; row < PQntuples(res); row++) {
         char* ip = PQgetvalue(res, row, 0);
         char* hostname = PQgetvalue(res, row, 1);
-        
+
         if (ip) {
             std::string ipStr = ip;
             std::string hostnameStr = hostname ? hostname : "";
             hosts[ipStr] = hostnameStr;
         }
     }
-    
+
     PQclear(res);
     return hosts;
 }
 
 bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostname) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return false;
     }
-    
+
     // 验证IP地址格式
     if (!isValidIP(ip)) {
         std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
-    
+
     // 使用参数化查询插入或更新告警记录
     const char* paramValues[2];
     int paramLengths[2];
     int paramFormats[2];
-    
+
     paramValues[0] = ip.c_str();
     paramValues[1] = hostname.c_str();
     paramLengths[0] = static_cast<int>(ip.length());
     paramLengths[1] = static_cast<int>(hostname.length());
     paramFormats[0] = 0;
     paramFormats[1] = 0;
-    
+
     const char* insertSQL = "INSERT INTO alerts (ip, hostname, created_time) "
                            "VALUES ($1, $2, NOW() AT TIME ZONE 'UTC') "
                            "ON CONFLICT (ip) DO NOTHING";
-    
+
     PGresult* res = PQexecParams(conn, insertSQL, 2, nullptr, paramValues, paramLengths, paramFormats, 0);
     
     if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -667,30 +681,32 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
 }
 
 bool DatabaseManagerPG::removeAlert(const std::string& ip) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return false;
     }
-    
+
     // 验证IP地址格式
     if (!isValidIP(ip)) {
         std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
-    
+
     // 使用参数化查询获取告警信息，用于写入恢复记录
     const char* selectSQL = "SELECT hostname, created_time FROM alerts WHERE ip = $1";
     const char* paramValues[1] = { ip.c_str() };
     int paramLengths[1] = { static_cast<int>(ip.length()) };
     int paramFormats[1] = { 0 };
-    
+
     PGresult* selectRes = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (!selectRes || PQresultStatus(selectRes) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query alert information for IP: {}", ip);
         if (selectRes) PQclear(selectRes);
         return false;
     }
-    
+
     std::string hostname, alertTime;
     if (PQntuples(selectRes) > 0) {
         char* hostText = PQgetvalue(selectRes, 0, 0);
@@ -749,15 +765,16 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
 }
 
 std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
     std::vector<std::tuple<std::string, std::string, std::string>> alerts;
-    
+
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return alerts;
     }
-    
+
     PGresult* res = nullptr;
-    
+
     // 查询活动告警，按创建时间排序
     if (days >= 0) {
         // 使用参数化查询指定天数内的告警
@@ -766,7 +783,7 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
         const char* paramValues[1] = { daysStr.c_str() };
         int paramLengths[1] = { static_cast<int>(daysStr.length()) };
         int paramFormats[1] = { 0 };
-        
+
         res = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     } else {
         // 查询所有告警
@@ -799,16 +816,18 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
     PQclear(res);
     return alerts;
 }
+
 std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> DatabaseManagerPG::getRecoveryRecords(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
-    
+
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return records;
     }
-    
+
     PGresult* res = nullptr;
-    
+
     // 查询恢复记录，按恢复时间排序
     if (days >= 0) {
         // 使用参数化查询指定天数内的恢复记录

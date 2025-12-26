@@ -13,6 +13,7 @@ class DatabaseManager : public DatabaseInterface {
 private:
     std::string dbPath;
     sqlite3* db;  // sqlite3* 类型的指针
+    std::mutex dbMutex;  // 互斥锁，用于线程安全
     
     // 辅助函数：将IP地址转换为有效的表名
     std::string ipToTableName(const std::string& ip);
