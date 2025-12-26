@@ -108,7 +108,10 @@ if(BUILD_TESTS)
         )
         target_link_libraries(mping_tests PRIVATE Threads::Threads SQLite::SQLite3)
     else()
+        # When PostgreSQL is enabled, include both database managers for testing
+        find_package(SQLite3 REQUIRED)
         target_sources(mping_tests PRIVATE
+            src/database_manager.cpp
             src/database_manager_pg.cpp
             src/database_factory.cpp
             src/ping_manager.cpp
@@ -117,7 +120,7 @@ if(BUILD_TESTS)
             src/utils.cpp
             src/version_info.cpp
         )
-        target_link_libraries(mping_tests PRIVATE Threads::Threads ${PQ_LDFLAGS})
+        target_link_libraries(mping_tests PRIVATE Threads::Threads SQLite::SQLite3 ${PQ_LDFLAGS})
         target_include_directories(mping_tests PRIVATE ${PQ_INCLUDE_DIRS})
         target_compile_options(mping_tests PRIVATE ${PQ_CFLAGS_OTHER})
     endif()
