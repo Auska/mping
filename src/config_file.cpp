@@ -1,15 +1,19 @@
 #include "config_file.h"
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <algorithm>
-#include <filesystem>
-#include <cstdlib>
+
 #include <sys/stat.h>
 
-ConfigFile::ConfigFile() : loaded(false) {}
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
-ConfigFile::~ConfigFile() {}
+ConfigFile::ConfigFile() : loaded(false) {
+}
+
+ConfigFile::~ConfigFile() {
+}
 
 std::string ConfigFile::trim(const std::string& str) const {
     size_t first = str.find_first_not_of(" \t\n\r");
@@ -37,7 +41,7 @@ bool ConfigFile::parseLine(const std::string& line, std::string& currentSection)
     // 解析键值对 key = value
     size_t equalPos = trimmed.find('=');
     if (equalPos != std::string::npos) {
-        std::string key = trim(trimmed.substr(0, equalPos));
+        std::string key   = trim(trimmed.substr(0, equalPos));
         std::string value = trim(trimmed.substr(equalPos + 1));
 
         // 处理引号
@@ -94,7 +98,7 @@ bool ConfigFile::save(const std::string& path) {
     // 确保目录存在
     std::filesystem::path filePath(path);
     std::filesystem::path dirPath = filePath.parent_path();
-    
+
     if (!dirPath.empty() && !std::filesystem::exists(dirPath)) {
         try {
             std::filesystem::create_directories(dirPath);
@@ -138,7 +142,7 @@ bool ConfigFile::save(const std::string& path) {
                     break;
                 }
             }
-            
+
             if (!found) {
                 if (!sectionWritten) {
                     if (section != lastSection) {
@@ -167,7 +171,8 @@ bool ConfigFile::save() {
     return save(filePath);
 }
 
-std::optional<std::string> ConfigFile::get(const std::string& section, const std::string& key) const {
+std::optional<std::string> ConfigFile::get(const std::string& section,
+                                           const std::string& key) const {
     auto sectionIt = configData.find(section);
     if (sectionIt == configData.end()) {
         return std::nullopt;
@@ -181,7 +186,8 @@ std::optional<std::string> ConfigFile::get(const std::string& section, const std
     return keyIt->second;
 }
 
-std::string ConfigFile::get(const std::string& section, const std::string& key, const std::string& defaultValue) const {
+std::string ConfigFile::get(const std::string& section, const std::string& key,
+                            const std::string& defaultValue) const {
     auto value = get(section, key);
     return value ? *value : defaultValue;
 }
@@ -215,14 +221,16 @@ std::optional<bool> ConfigFile::getBool(const std::string& section, const std::s
 
     if (lowerValue == "true" || lowerValue == "yes" || lowerValue == "1" || lowerValue == "on") {
         return true;
-    } else if (lowerValue == "false" || lowerValue == "no" || lowerValue == "0" || lowerValue == "off") {
+    } else if (lowerValue == "false" || lowerValue == "no" || lowerValue == "0"
+               || lowerValue == "off") {
         return false;
     }
 
     return std::nullopt;
 }
 
-bool ConfigFile::getBool(const std::string& section, const std::string& key, bool defaultValue) const {
+bool ConfigFile::getBool(const std::string& section, const std::string& key,
+                         bool defaultValue) const {
     auto value = getBool(section, key);
     return value ? *value : defaultValue;
 }
@@ -288,12 +296,11 @@ bool ConfigFile::remove(const std::string& section, const std::string& key) {
     }
 
     // 从 originalEntries 中移除
-    originalEntries.erase(
-        std::remove_if(originalEntries.begin(), originalEntries.end(),
-            [&section, &key](const ConfigEntry& entry) {
-                return entry.section == section && entry.key == key;
-            }),
-        originalEntries.end());
+    originalEntries.erase(std::remove_if(originalEntries.begin(), originalEntries.end(),
+                                         [&section, &key](const ConfigEntry& entry) {
+                                             return entry.section == section && entry.key == key;
+                                         }),
+                          originalEntries.end());
 
     return true;
 }
@@ -304,12 +311,11 @@ bool ConfigFile::removeSection(const std::string& section) {
     }
 
     // 从 originalEntries 中移除
-    originalEntries.erase(
-        std::remove_if(originalEntries.begin(), originalEntries.end(),
-            [&section](const ConfigEntry& entry) {
-                return entry.section == section;
-            }),
-        originalEntries.end());
+    originalEntries.erase(std::remove_if(originalEntries.begin(), originalEntries.end(),
+                                         [&section](const ConfigEntry& entry) {
+                                             return entry.section == section;
+                                         }),
+                          originalEntries.end());
 
     return true;
 }
@@ -423,7 +429,7 @@ bool ConfigFile::createXDGConfigDir() {
     }
 
     std::string mpingConfigDir = configHome + "/mping";
-    
+
     try {
         if (!std::filesystem::exists(mpingConfigDir)) {
             std::filesystem::create_directories(mpingConfigDir);

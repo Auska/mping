@@ -1,9 +1,12 @@
 #include "config_manager.h"
-#include "version_info.h"
+
+#include <unistd.h>
+
 #include <iostream>
 #include <print>
-#include <unistd.h>
 #include <stdexcept>
+
+#include "version_info.h"
 
 ConfigManager::ConfigManager(bool loadConfig) {
     // 根据参数决定是否加载配置文件
@@ -54,7 +57,8 @@ void ConfigManager::applyConfigFileSettings() {
     }
 #ifdef USE_POSTGRESQL
     if (configFile.has("general", "use_postgresql")) {
-        config.usePostgreSQL = configFile.getBool("general", "use_postgresql", config.usePostgreSQL);
+        config.usePostgreSQL =
+            configFile.getBool("general", "use_postgresql", config.usePostgreSQL);
     }
 #endif
 }
@@ -65,7 +69,7 @@ bool ConfigManager::saveConfigFile() {
 
 bool ConfigManager::saveConfigFile(const std::string& path) {
     std::string savePath = path.empty() ? configFile.getFilePath() : path;
-    
+
     if (savePath.empty()) {
         // 使用默认的 XDG 配置路径
         std::string configHome = ConfigFile::getXDGConfigHome();
@@ -98,29 +102,28 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         printUsage(argv[0]);
         return false;
     }
-    
+
     // 定义长选项
-    const struct option long_options[] = {
-        {"help", no_argument, nullptr, 'h'},
-            {"database", required_argument, nullptr, 'd'},
-            {"file", required_argument, nullptr, 'f'},
-            {"query", required_argument, nullptr, 'q'},
-            {"alerts", optional_argument, nullptr, 'a'},
-            {"recovery", optional_argument, nullptr, 'r'},
-            {"silent", no_argument, nullptr, 's'},
-            {"cleanup", optional_argument, nullptr, 'C'},
-            {"count", required_argument, nullptr, 'n'},
-            {"timeout", required_argument, nullptr, 't'},
-            {"version", no_argument, nullptr, 'v'},
-            {"config", required_argument, nullptr, 'c'},
-            {"no-config", no_argument, nullptr, 'N'},
-            {"save-config", optional_argument, nullptr, 'S'},
-        {nullptr, 0, nullptr, 0}
-    };
-    
+    const struct option long_options[] = {{"help", no_argument, nullptr, 'h'},
+                                          {"database", required_argument, nullptr, 'd'},
+                                          {"file", required_argument, nullptr, 'f'},
+                                          {"query", required_argument, nullptr, 'q'},
+                                          {"alerts", optional_argument, nullptr, 'a'},
+                                          {"recovery", optional_argument, nullptr, 'r'},
+                                          {"silent", no_argument, nullptr, 's'},
+                                          {"cleanup", optional_argument, nullptr, 'C'},
+                                          {"count", required_argument, nullptr, 'n'},
+                                          {"timeout", required_argument, nullptr, 't'},
+                                          {"version", no_argument, nullptr, 'v'},
+                                          {"config", required_argument, nullptr, 'c'},
+                                          {"no-config", no_argument, nullptr, 'N'},
+                                          {"save-config", optional_argument, nullptr, 'S'},
+                                          {nullptr, 0, nullptr, 0}};
+
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::n:t:vc:NS::", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::n:t:vc:NS::", long_options, nullptr))
+           != -1) {
         switch (opt) {
             case 'h':
                 printUsage(argv[0]);
@@ -130,7 +133,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 return false;
             case 'd':
                 config.enableDatabase = true;
-                config.databasePath = optarg;
+                config.databasePath   = optarg;
                 break;
             case 'f':
                 config.filename = optarg;
@@ -139,7 +142,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.queryIP = optarg;
                 break;
             case 'a':
-                config.queryAlerts = -2; // 特殊值表示已启用告警但未指定天数
+                config.queryAlerts = -2;  // 特殊值表示已启用告警但未指定天数
                 // 如果提供了参数，解析天数值
                 if (optarg != nullptr) {
                     try {
@@ -155,17 +158,19 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 }
                 break;
             case 'r':
-                config.queryRecoveryRecords = -2; // 特殊值表示已启用恢复记录查询但未指定天数
+                config.queryRecoveryRecords = -2;  // 特殊值表示已启用恢复记录查询但未指定天数
                 // 如果提供了参数，解析天数值
                 if (optarg != nullptr) {
                     try {
                         config.queryRecoveryRecords = std::stoi(optarg);
                         if (config.queryRecoveryRecords < 0) {
-                            std::println(std::cerr, "Recovery record days must be a non-negative integer.");
+                            std::println(std::cerr,
+                                         "Recovery record days must be a non-negative integer.");
                             return false;
                         }
                     } catch (const std::exception& e) {
-                        std::println(std::cerr, "Invalid value for recovery record days: {}", optarg);
+                        std::println(std::cerr, "Invalid value for recovery record days: {}",
+                                     optarg);
                         return false;
                     }
                 }
@@ -176,7 +181,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'C':
                 // 如果提供了参数，使用指定的值，否则默认为30天
                 config.enableDatabase = true;  // 清理功能需要启用数据库
-                config.cleanupDays = (optarg) ? std::stoi(optarg) : 30;
+                config.cleanupDays    = (optarg) ? std::stoi(optarg) : 30;
                 break;
             case 'n':
                 try {
@@ -229,12 +234,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
         }
     }
 
-    
     // 如果还有剩余的参数，将其视为文件名
     if (optind < argc) {
         config.filename = argv[optind];
     }
-    
+
     return true;
 }
 
@@ -249,10 +253,15 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "  -v, --version\t\tShow version information");
     std::println(std::cout, "  -d, --database\tEnable database logging and specify database path");
     std::println(std::cout, "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)");
-    std::println(std::cout, "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)");
-    std::println(std::cout, "  -a, --alerts [n]\tQuery active alerts (requires -d, n: days, default: all)");
-    std::println(std::cout, "  -r, --recovery [n]\tQuery recovery records (requires -d, n: days, default: all)");
-    std::println(std::cout, "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)");
+    std::println(std::cout,
+                 "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)");
+    std::println(std::cout,
+                 "  -a, --alerts [n]\tQuery active alerts (requires -d, n: days, default: all)");
+    std::println(std::cout,
+                 "  -r, --recovery [n]\tQuery recovery records (requires -d, n: days, default: "
+                 "all)");
+    std::println(std::cout,
+                 "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)");
     std::println(std::cout, "  -s, --silent\t\tSilent mode, suppress output");
     std::println(std::cout, "  -n, --count <n>\tNumber of ping packets to send (default: 3)");
     std::println(std::cout, "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)");
@@ -269,7 +278,10 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "    5. ./mping.conf");
     std::println(std::cout, "    6. ./.mpingrc");
     std::println(std::cout, "");
-    std::println(std::cout, "Default behavior: If no file specified and database enabled, read hosts from database. Otherwise, read from ip.txt.");
+    std::println(std::cout,
+                 "Default behavior: If no file specified and database enabled, read hosts from "
+                 "database. Otherwise, read from ip.txt.");
     std::println(std::cout, "Default filename: ip.txt");
-    std::println(std::cout, "Default behavior: Show all hosts with status (IP, hostname, status, delay)");
+    std::println(std::cout,
+                 "Default behavior: Show all hosts with status (IP, hostname, status, delay)");
 }

@@ -1,17 +1,19 @@
 #ifndef DATABASE_MANAGER_PG_H
 #define DATABASE_MANAGER_PG_H
 
-#include "database_interface.h"
-#include "database_base.h"
-#include <string>
-#include <vector>
-#include <tuple>
-#include <map>
 #include <libpq-fe.h>
+
+#include <map>
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include "database_base.h"
+#include "database_interface.h"
 
 // 数据库管理类，用于处理PostgreSQL数据库操作
 class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
-private:
+   private:
     std::string connInfo;
     PGconn* conn;
 
@@ -28,48 +30,56 @@ private:
     bool checkConnection();
 
     // 为特定IP地址创建表
-    bool createIPTables(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
+    bool createIPTables(
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
     // 批量插入主机信息
-    bool insertHostsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
+    bool insertHostsBatch(
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
     // 批量插入ping结果
-    bool insertPingResultsBatch(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
+    bool insertPingResultsBatch(
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
-public:
+   public:
     // 构造函数和析构函数
     explicit DatabaseManagerPG(const std::string& connectionInfo);
     ~DatabaseManagerPG();
-    
+
     // 初始化数据库
     bool initialize() override;
-    
+
     // 插入单个ping结果
-    bool insertPingResult(const std::string& ip, const std::string& hostname, short delay, bool success, const std::string& timestamp) override;
-    
+    bool insertPingResult(const std::string& ip, const std::string& hostname, short delay,
+                          bool success, const std::string& timestamp) override;
+
     // 批量插入ping结果
-    bool insertPingResults(const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) override;
-    
+    bool insertPingResults(
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results)
+        override;
+
     // 查询IP统计信息
     void queryIPStatistics(const std::string& ip) override;
-    
+
     // 清理旧数据
     void cleanupOldData(int days) override;
-    
+
     // 获取所有主机
     std::map<std::string, std::string> getAllHosts() override;
-    
+
     // 添加告警
     bool addAlert(const std::string& ip, const std::string& hostname) override;
-    
+
     // 移除告警
     bool removeAlert(const std::string& ip) override;
-    
+
     // 获取活动告警
-    std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts(int days = -1) override;
-    
+    std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts(
+        int days = -1) override;
+
     // 获取恢复记录
-    std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> getRecoveryRecords(int days = -1) override;
+    std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
+    getRecoveryRecords(int days = -1) override;
 };
 
-#endif // DATABASE_MANAGER_PG_H
+#endif  // DATABASE_MANAGER_PG_H

@@ -6,7 +6,8 @@
 #endif
 #include <memory>
 
-std::unique_ptr<DatabaseInterface> DatabaseFactory::createDatabase(DatabaseType type, const std::string& connectionInfo) {
+std::unique_ptr<DatabaseInterface> DatabaseFactory::createDatabase(
+    DatabaseType type, const std::string& connectionInfo) {
 #ifdef USE_POSTGRESQL
     if (type == DatabaseType::POSTGRESQL) {
         return std::make_unique<DatabaseManagerPG>(connectionInfo);
@@ -21,11 +22,11 @@ std::unique_ptr<DatabaseInterface> DatabaseFactory::createDatabase(DatabaseType 
 
 DatabaseType DatabaseFactory::detectDatabaseType(const std::string& connectionInfo) {
     // 检查连接字符串特征来判断数据库类型
-    if (connectionInfo.find("host=") != std::string::npos || 
-        connectionInfo.find("port=") != std::string::npos || 
-        connectionInfo.find("user=") != std::string::npos || 
-        connectionInfo.find("password=") != std::string::npos || 
-        connectionInfo.find("dbname=") != std::string::npos) {
+    if (connectionInfo.find("host=") != std::string::npos
+        || connectionInfo.find("port=") != std::string::npos
+        || connectionInfo.find("user=") != std::string::npos
+        || connectionInfo.find("password=") != std::string::npos
+        || connectionInfo.find("dbname=") != std::string::npos) {
 #ifdef USE_POSTGRESQL
         return DatabaseType::POSTGRESQL;
 #else

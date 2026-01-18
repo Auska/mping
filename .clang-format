@@ -1,0 +1,49 @@
+# 使用 Google 风格作为基础
+BasedOnStyle: Google
+
+# 缩进设置
+IndentWidth: 4
+UseTab: Never
+TabWidth: 4
+
+# 括号风格
+BreakBeforeBraces: Attach  # K&R 风格：函数左大括号不换行
+
+# 函数声明和调用参数换行
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+PenaltyBreakBeforeFirstCallParameter: 1000
+
+# 行宽限制
+ColumnLimit: 100
+
+# 指针和引用对齐方式
+PointerAlignment: Left   # int* p; 而不是 int *p;
+
+# 空格设置
+SpacesBeforeTrailingComments: 2
+SpaceAfterCStyleCast: false
+
+# 是否在 #include 后保留空行
+IncludeBlocks: Regroup
+
+# 排序 include
+SortIncludes: true
+
+# 控制 if/for/while 后是否加空格
+SpaceBeforeParens: ControlStatements
+
+# 连续赋值对齐
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+
+# 二元操作符换行风格（操作符在行首）
+BreakBeforeBinaryOperators: NonAssignment
+
+# 允许短函数单行
+AllowShortFunctionsOnASingleLine: InlineOnly
+
+# 注释保留原始格式（避免破坏 Doxygen）
+ReflowComments: false

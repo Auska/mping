@@ -1,8 +1,9 @@
 #include <catch2/catch_all.hpp>
-#include "version_info.h"
 #include <iostream>
-#include <sstream>
 #include <regex>
+#include <sstream>
+
+#include "version_info.h"
 
 // Helper function to capture stdout
 std::string capture_output(std::function<void()> func) {
@@ -15,77 +16,57 @@ std::string capture_output(std::function<void()> func) {
 
 TEST_CASE("VersionInfo output format", "[version]") {
     SECTION("Version info contains project name") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("mping") != std::string::npos);
     }
 
     SECTION("Version info contains version number") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         // Check for version pattern (e.g., "1.1.0")
         REQUIRE(std::regex_search(output, std::regex("\\d+\\.\\d+\\.\\d+")));
     }
 
     SECTION("Version info contains description") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("Multi-host Ping Tool") != std::string::npos);
     }
 
     SECTION("Version info contains homepage") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("https://github.com/Auska/mping") != std::string::npos);
     }
 
     SECTION("Version info contains build time") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("Build Time") != std::string::npos);
     }
 
     SECTION("Version info contains compiler information") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("Compiler") != std::string::npos);
     }
 
     SECTION("Version info contains platform information") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("Platform") != std::string::npos);
     }
 }
 
 TEST_CASE("VersionInfo version components", "[version]") {
     SECTION("Major version is present") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         REQUIRE(output.find("Version:") != std::string::npos);
     }
 
     SECTION("Version format is correct") {
-        std::string output = capture_output([]() {
-            print_version_info();
-        });
+        std::string output = capture_output([]() { print_version_info(); });
         // Check for "Version: X.Y.Z" pattern
         REQUIRE(std::regex_search(output, std::regex("Version:\\s*\\d+\\.\\d+\\.\\d+")));
     }
 }
 
 TEST_CASE("VersionInfo compiler detection", "[version]") {
-    std::string output = capture_output([]() {
-        print_version_info();
-    });
+    std::string output = capture_output([]() { print_version_info(); });
 
     SECTION("Detects GCC compiler") {
 #ifdef __GNUC__
@@ -107,9 +88,7 @@ TEST_CASE("VersionInfo compiler detection", "[version]") {
 }
 
 TEST_CASE("VersionInfo platform detection", "[version]") {
-    std::string output = capture_output([]() {
-        print_version_info();
-    });
+    std::string output = capture_output([]() { print_version_info(); });
 
     SECTION("Detects Linux platform") {
 #ifdef __linux__
@@ -138,9 +117,7 @@ TEST_CASE("VersionInfo platform detection", "[version]") {
 
 TEST_CASE("VersionInfo no crashes", "[version]") {
     SECTION("Function executes without crashing") {
-        REQUIRE_NOTHROW([]() {
-            print_version_info();
-        }());
+        REQUIRE_NOTHROW([]() { print_version_info(); }());
     }
 
     SECTION("Function can be called multiple times") {

@@ -1,21 +1,21 @@
 #ifndef CONFIG_FILE_H
 #define CONFIG_FILE_H
 
-#include <string>
 #include <map>
 #include <optional>
+#include <string>
 #include <vector>
 
 class ConfigFile {
-public:
+   public:
     // 配置文件路径类型
     enum class ConfigPath {
-        XDG_CONFIG_HOME,      // $XDG_CONFIG_HOME/mping/config
-        XDG_CONFIG_DIRS,      // $XDG_CONFIG_DIRS/mping/config
-        HOME_CONFIG,          // ~/.config/mping/config
-        HOME_DOT_CONFIG,      // ~/.mpingrc
-        CURRENT_DIR,          // ./mping.conf
-        CURRENT_DIR_DOT       // .mpingrc
+        XDG_CONFIG_HOME,  // $XDG_CONFIG_HOME/mping/config
+        XDG_CONFIG_DIRS,  // $XDG_CONFIG_DIRS/mping/config
+        HOME_CONFIG,      // ~/.config/mping/config
+        HOME_DOT_CONFIG,  // ~/.mpingrc
+        CURRENT_DIR,      // ./mping.conf
+        CURRENT_DIR_DOT   // .mpingrc
     };
 
     // 配置节和键
@@ -26,7 +26,7 @@ public:
         std::string comment;
     };
 
-private:
+   private:
     std::map<std::string, std::map<std::string, std::string>> configData;
     std::vector<ConfigEntry> originalEntries;
     std::string filePath;
@@ -38,7 +38,7 @@ private:
     // 解析一行配置
     bool parseLine(const std::string& line, std::string& currentSection);
 
-public:
+   public:
     ConfigFile();
     ~ConfigFile();
 
@@ -58,7 +58,8 @@ public:
     std::optional<std::string> get(const std::string& section, const std::string& key) const;
 
     // 获取配置值，带默认值
-    std::string get(const std::string& section, const std::string& key, const std::string& defaultValue) const;
+    std::string get(const std::string& section, const std::string& key,
+                    const std::string& defaultValue) const;
 
     // 获取整数配置值
     std::optional<int> getInt(const std::string& section, const std::string& key) const;
@@ -121,4 +122,4 @@ public:
     static bool createXDGConfigDir();
 };
 
-#endif // CONFIG_FILE_H
+#endif  // CONFIG_FILE_H

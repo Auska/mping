@@ -1,7 +1,9 @@
-#include <catch2/catch_all.hpp>
-#include "config_manager.h"
-#include <cstring>
 #include <unistd.h>
+
+#include <catch2/catch_all.hpp>
+#include <cstring>
+
+#include "config_manager.h"
 
 // Helper function to reset getopt global variables
 void reset_getopt() {
@@ -15,7 +17,7 @@ TEST_CASE("ConfigManager default values", "[config]") {
     SECTION("Default configuration values") {
         ConfigManager configManager(false);  // 禁用配置文件加载
         const auto& config = configManager.getConfig();
-        
+
         REQUIRE(config.filename == "");
         REQUIRE(config.enableDatabase == false);
         REQUIRE(config.databasePath == "ping_monitor.db");
@@ -65,7 +67,8 @@ TEST_CASE("ConfigManager database option", "[config]") {
     SECTION("-d option with path") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-d"), const_cast<char*>("/path/to/db.db")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-d"),
+                        const_cast<char*>("/path/to/db.db")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
@@ -75,7 +78,8 @@ TEST_CASE("ConfigManager database option", "[config]") {
     SECTION("--database option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--database"), const_cast<char*>("test.db")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--database"),
+                        const_cast<char*>("test.db")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
@@ -87,7 +91,8 @@ TEST_CASE("ConfigManager file option", "[config]") {
     SECTION("-f option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-f"), const_cast<char*>("hosts.txt")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-f"),
+                        const_cast<char*>("hosts.txt")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.filename == "hosts.txt");
@@ -96,7 +101,8 @@ TEST_CASE("ConfigManager file option", "[config]") {
     SECTION("--file option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--file"), const_cast<char*>("my_ips.txt")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--file"),
+                        const_cast<char*>("my_ips.txt")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.filename == "my_ips.txt");
@@ -107,7 +113,8 @@ TEST_CASE("ConfigManager query option", "[config]") {
     SECTION("-q option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-q"), const_cast<char*>("192.168.1.1")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-q"),
+                        const_cast<char*>("192.168.1.1")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.queryIP == "192.168.1.1");
@@ -116,7 +123,8 @@ TEST_CASE("ConfigManager query option", "[config]") {
     SECTION("--query option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--query"), const_cast<char*>("10.0.0.1")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--query"),
+                        const_cast<char*>("10.0.0.1")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.queryIP == "10.0.0.1");
@@ -265,7 +273,8 @@ TEST_CASE("ConfigManager count option", "[config]") {
     SECTION("-n option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"), const_cast<char*>("5")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
+                        const_cast<char*>("5")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.pingCount == 5);
@@ -274,7 +283,8 @@ TEST_CASE("ConfigManager count option", "[config]") {
     SECTION("--count option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--count"), const_cast<char*>("10")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--count"),
+                        const_cast<char*>("10")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.pingCount == 10);
@@ -283,21 +293,24 @@ TEST_CASE("ConfigManager count option", "[config]") {
     SECTION("-n option with invalid value (zero)") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"), const_cast<char*>("0")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
+                        const_cast<char*>("0")};
         REQUIRE(configManager.parseArguments(3, argv) == false);
     }
 
     SECTION("-n option with invalid value (negative)") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"), const_cast<char*>("-1")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
+                        const_cast<char*>("-1")};
         REQUIRE(configManager.parseArguments(3, argv) == false);
     }
 
     SECTION("-n option with invalid value (non-numeric)") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"), const_cast<char*>("abc")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
+                        const_cast<char*>("abc")};
         REQUIRE(configManager.parseArguments(3, argv) == false);
     }
 }
@@ -306,7 +319,8 @@ TEST_CASE("ConfigManager timeout option", "[config]") {
     SECTION("-t option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"), const_cast<char*>("5")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
+                        const_cast<char*>("5")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.timeoutSeconds == 5);
@@ -315,7 +329,8 @@ TEST_CASE("ConfigManager timeout option", "[config]") {
     SECTION("--timeout option") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--timeout"), const_cast<char*>("10")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--timeout"),
+                        const_cast<char*>("10")};
         REQUIRE(configManager.parseArguments(3, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.timeoutSeconds == 10);
@@ -324,21 +339,24 @@ TEST_CASE("ConfigManager timeout option", "[config]") {
     SECTION("-t option with invalid value (zero)") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"), const_cast<char*>("0")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
+                        const_cast<char*>("0")};
         REQUIRE(configManager.parseArguments(3, argv) == false);
     }
 
     SECTION("-t option with invalid value (negative)") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"), const_cast<char*>("-1")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
+                        const_cast<char*>("-1")};
         REQUIRE(configManager.parseArguments(3, argv) == false);
     }
 
     SECTION("-t option with invalid value (non-numeric)") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"), const_cast<char*>("xyz")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
+                        const_cast<char*>("xyz")};
         REQUIRE(configManager.parseArguments(3, argv) == false);
     }
 }
@@ -356,7 +374,9 @@ TEST_CASE("ConfigManager positional argument", "[config]") {
     SECTION("Options override positional argument") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-f"), const_cast<char*>("option_file.txt"), const_cast<char*>("positional_file.txt")};
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-f"),
+                        const_cast<char*>("option_file.txt"),
+                        const_cast<char*>("positional_file.txt")};
         REQUIRE(configManager.parseArguments(4, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.filename == "positional_file.txt");
@@ -367,16 +387,10 @@ TEST_CASE("ConfigManager multiple options", "[config]") {
     SECTION("Multiple valid options") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {
-            const_cast<char*>("mping"),
-            const_cast<char*>("-d"),
-            const_cast<char*>("test.db"),
-            const_cast<char*>("-s"),
-            const_cast<char*>("-n"),
-            const_cast<char*>("5"),
-            const_cast<char*>("-t"),
-            const_cast<char*>("10")
-        };
+        char* argv[] = {const_cast<char*>("mping"),   const_cast<char*>("-d"),
+                        const_cast<char*>("test.db"), const_cast<char*>("-s"),
+                        const_cast<char*>("-n"),      const_cast<char*>("5"),
+                        const_cast<char*>("-t"),      const_cast<char*>("10")};
         REQUIRE(configManager.parseArguments(8, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
@@ -389,18 +403,11 @@ TEST_CASE("ConfigManager multiple options", "[config]") {
     SECTION("All options combined") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {
-            const_cast<char*>("mping"),
-            const_cast<char*>("-d"),
-            const_cast<char*>("monitor.db"),
-            const_cast<char*>("-f"),
-            const_cast<char*>("hosts.txt"),
-            const_cast<char*>("-s"),
-            const_cast<char*>("-n"),
-            const_cast<char*>("3"),
-            const_cast<char*>("-t"),
-            const_cast<char*>("5")
-        };
+        char* argv[] = {const_cast<char*>("mping"),      const_cast<char*>("-d"),
+                        const_cast<char*>("monitor.db"), const_cast<char*>("-f"),
+                        const_cast<char*>("hosts.txt"),  const_cast<char*>("-s"),
+                        const_cast<char*>("-n"),         const_cast<char*>("3"),
+                        const_cast<char*>("-t"),         const_cast<char*>("5")};
         REQUIRE(configManager.parseArguments(10, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);

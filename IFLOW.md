@@ -29,6 +29,30 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 6. **使用现代 C++ 特性**：如 `std::println`、智能指针、移动语义等
 7. **线程安全**：使用互斥锁和条件变量确保线程安全
 8. **使用 Catch2 v3 进行单元测试**：测试框架使用 Catch2 v3.5.0
+9. **代码格式化**：使用 clang-format 保持代码风格一致（Google 风格基础）
+
+### 代码格式化规范
+项目使用 `.clang-format` 配置文件定义代码风格标准：
+
+```bash
+# 格式化所有源文件
+clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
+```
+
+**主要格式化规则**：
+- 缩进：4 空格，不使用 Tab
+- 括号风格：K&R 风格（左大括号不换行）
+- 行宽限制：100 字符
+- 指针对齐：左对齐 (`int* p;`)
+- `#include` 自动排序和分组
+- 连续赋值自动对齐
+- 短函数可放在单行（inline only）
+
+### 格式化检查（在 CI/CD 中）
+```bash
+# 检查是否需要格式化（不修改文件）
+clang-format -style=file src/*.cpp src/*.h tests/*.cpp | diff - src/*.cpp
+```
 
 ## 项目特性
 - 并发 ping 多个主机以获得更快的结果（默认最大并发数 50）
@@ -66,15 +90,15 @@ mkdir build && cd build
 
 # 仅启用 SQLite（默认）
 cmake ..
-make
+make -j$(nproc)
 
 # 启用 PostgreSQL 支持
 cmake -DUSE_POSTGRESQL=ON ..
-make
+make -j$(nproc)
 
 # 调试版本构建
 cmake -DCMAKE_BUILD_TYPE=Debug ..
-make
+make -j$(nproc)
 
 # 使用构建脚本（支持 Debug/Release）
 ./build.sh [Debug|Release]
@@ -202,12 +226,14 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试
 
+> **注意**：启用 PostgreSQL 时，测试程序会同时链接 SQLite 和 PostgreSQL 数据库管理器，以便进行跨数据库测试。
+
 ### 运行测试
 ```bash
 # 编译测试程序
 cd build
 cmake -DBUILD_TESTS=ON ..
-make
+make -j$(nproc) mping_tests
 
 # 运行所有测试
 ./mping_tests
@@ -238,6 +264,7 @@ ctest --verbose
 ```
 
 ## 开发实践
+- **代码格式化**：使用 clang-format 保持代码风格一致（Google 风格基础）
 - **并发设计**：使用线程池和异步操作以提高性能
 - **错误处理**：全面的异常处理和错误报告机制
 - **资源管理**：使用智能指针进行自动内存管理
@@ -272,14 +299,14 @@ host=localhost user=myuser password=mypass dbname=mydb
 # 编译项目
 mkdir build && cd build
 cmake ..
-make
+make -j$(nproc)
 
 # 安装到系统（默认：/usr/local）
 sudo make install
 
 # 自定义安装路径
 cmake -DCMAKE_INSTALL_PREFIX=/opt/mping ..
-make
+make -j$(nproc)
 sudo make install
 ```
 

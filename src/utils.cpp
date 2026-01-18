@@ -1,21 +1,22 @@
 #include "utils.h"
-#include <stdexcept>
+
 #include <print>
+#include <stdexcept>
 
 std::map<std::string, std::string> readHostsFromFile(const std::string& filename) {
     std::map<std::string, std::string> hosts;
-    
+
     if (filename.empty()) {
         throw std::invalid_argument("Filename cannot be empty");
     }
-    
+
     std::ifstream file(filename);
-    
+
     if (!file.is_open()) {
         std::println(std::cerr, "Failed to open file: {}", filename);
         return hosts;
     }
-    
+
     std::string line;
     int lineNumber = 0;
     while (std::getline(file, line)) {
@@ -31,12 +32,13 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
                 if (iss >> ip >> hostname) {
                     hosts[ip] = hostname;
                 } else {
-                    std::println(std::cerr, "Warning: Invalid format on line {} in file {}", lineNumber, filename);
+                    std::println(std::cerr, "Warning: Invalid format on line {} in file {}",
+                                 lineNumber, filename);
                 }
             }
         }
     }
-    
+
     // 文件会在析构时自动关闭，但显式关闭是一个好习惯
     file.close();
     return hosts;
