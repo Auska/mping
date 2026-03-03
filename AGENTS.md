@@ -147,7 +147,8 @@ brew install cmake sqlite postgresql pkg-config
 - `-c`, `--config <path>`: 从指定路径加载配置文件
 - `-N`, `--no-config`: 不加载配置文件
 - `-S`, `--save-config [path]`: 保存当前配置到文件（默认：XDG 配置目录）
-- `-P`, `--postgresql`: 使用 PostgreSQL 数据库（需要 -d 与连接字符串）
+
+> **注意**：PostgreSQL 支持通过连接字符串自动检测。当数据库路径包含 `host=` 时，将自动识别为 PostgreSQL 连接字符串。
 
 ## 文件格式
 输入文件应包含以下格式的行：
@@ -288,6 +289,8 @@ ctest --verbose
 ```
 host=localhost user=myuser password=mypass dbname=mydb
 ```
+
+> **自动检测**：程序会自动根据连接字符串判断数据库类型。如果路径包含 `host=` 关键字，则识别为 PostgreSQL 连接。
 
 ### PostgreSQL 可选参数
 - `client_min_messages=warning`：抑制 NOTICE 消息
