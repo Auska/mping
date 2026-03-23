@@ -1,5 +1,36 @@
 # mping - Multi-host Ping Tool 开发规范
 
+## 快速参考
+
+```bash
+# 构建（SQLite only, Release）
+mkdir -p build && cd build && cmake .. && make -j$(nproc)
+
+# 构建（含 PostgreSQL）
+cmake -DUSE_POSTGRESQL=ON .. && make -j$(nproc)
+
+# 构建（含测试）
+cmake -DBUILD_TESTS=ON .. && make -j$(nproc) mping_tests
+
+# 运行全部测试
+./mping_tests
+
+# 运行单个测试（带详细输出）
+./mping_tests "[test_case_name]" -s
+
+# 使用 CTest 运行测试
+ctest --output-on-failure
+
+# 格式化代码
+clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
+
+# 检查格式化（逐文件对比）
+for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
+
+# 安装到系统
+sudo make install
+```
+
 ## 项目概述
 mping 是一个命令行工具，用于同时检查多个主机的连接性。它从文件中读取 IP 地址和主机名列表，并并发执行 ping 操作。该工具还提供数据库日志记录和查询功能以分析 ping 结果。
 
@@ -19,6 +50,41 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **`database_interface.h`**：数据库抽象接口
 - **`database_base.h`**：数据库基类，提供公共逻辑和 IP 验证
 - **`version_info.cpp`/`version_info.h`**：版本信息管理
+
+### 程序流程（main.cpp）
+
+```
+解析命令行参数（ConfigManager）
+  → 加载配置文件（ConfigFile，XDG 规范搜索路径）
+  → 命令行选项覆盖配置文件设置
+  → 创建数据库实例（DatabaseFactory，根据连接字符串自动检测类型）
+  → 初始化数据库（创建表结构）
+  → 读取主机列表（utils::readHostsFromFile）
+  → 执行并发 ping（PingManager，线程池，最大并发数 50）
+  → 批量写入结果到数据库
+  → 处理告警和恢复记录
+  → 输出结果
+```
+
+### 数据库抽象层
+
+```
+DatabaseInterface（纯虚接口，9 个虚方法）
+       ↑
+DatabaseBase（公共逻辑: IP 验证, dbMutex, 禁止拷贝/移动）
+       ↑
+  ┌────┴────────────────────┐
+  │                         │
+DatabaseManager        DatabaseManagerPG
+（SQLite, sqlite3*）    （PostgreSQL, PGconn*）
+表名: ip_x_x_x_x       表名: ping_x_x_x_x
+```
+
+### 条件编译
+
+代码中使用 `#ifdef USE_POSTGRESQL` / `#ifdef USE_SQLITE` 宏进行条件编译。添加新数据库支持时需要修改：
+- `database_factory.cpp`：添加新的 `DatabaseType` 枚举值和创建逻辑
+- `CMakeLists.txt`：添加编译选项、依赖查找和源文件
 
 ## 编程规范
 1. **使用 C++23 标准实现**：利用现代 C++ 特性和性能优化
@@ -48,10 +114,10 @@ clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
 - 连续赋值自动对齐
 - 短函数可放在单行（inline only）
 
-### 格式化检查（在 CI/CD 中）
+### 格式化检查
 ```bash
-# 检查是否需要格式化（不修改文件）
-clang-format -style=file src/*.cpp src/*.h tests/*.cpp | diff - src/*.cpp
+# 检查是否需要格式化（逐文件对比，不修改文件）
+for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
 ```
 
 ## 项目特性
@@ -101,6 +167,8 @@ cmake -DCMAKE_BUILD_TYPE=Debug ..
 make -j$(nproc)
 
 # 使用构建脚本（支持 Debug/Release）
+# 注意：build.sh 不支持 -DUSE_POSTGRESQL=ON 和 -DBUILD_TESTS=ON，
+#       启用这些选项请直接使用 cmake 命令
 ./build.sh [Debug|Release]
 
 # 安装到系统（需要 root 权限）
