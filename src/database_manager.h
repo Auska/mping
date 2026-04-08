@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 
 #include <map>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -15,7 +16,15 @@
 class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
    private:
     std::string dbPath;
-    sqlite3* db;  // sqlite3* 类型的指针
+    // 使用智能指针管理 sqlite3 连接
+    struct Sqlite3Deleter {
+        void operator()(sqlite3* db) const {
+            if (db) {
+                sqlite3_close(db);
+            }
+        }
+    };
+    std::unique_ptr<sqlite3, Sqlite3Deleter> db;
 
     // 辅助函数：将IP地址转换为有效的表名
     std::string ipToTableName(const std::string& ip);

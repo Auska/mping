@@ -110,10 +110,15 @@ PingManager::performPing(const std::map<std::string, std::string>& hosts, int pi
     }
 
     // 创建工作线程池
-    std::vector<std::thread> workers;
+    std::vector<std::jthread> workers;
     std::mutex queueMutex;
     std::condition_variable condition;
     std::atomic<bool> stop(false);
+
+    // 添加完成计数器和条件变量，避免忙等待
+    std::atomic<size_t> activeTasks(hosts.size());
+    std::mutex completionMutex;
+    std::condition_variable completionCV;
 
     // 启动工作线程
     for (size_t i = 0; i < maxConcurrent; ++i) {
@@ -146,31 +151,26 @@ PingManager::performPing(const std::map<std::string, std::string>& hosts, int pi
                     std::lock_guard<std::mutex> lock(resultsMutex);
                     allResults.push_back(result);
                 }
+
+                // 减少活动任务计数，如果所有任务完成则通知主线程
+                if (--activeTasks == 0) {
+                    completionCV.notify_one();
+                }
             }
         });
     }
 
-    // 等待所有主机都被处理
-    while (true) {
-        {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            if (hostQueue.empty()) {
-                stop.store(true);
-                break;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // 等待所有任务完成（使用条件变量，避免忙等待）
+    {
+        std::unique_lock<std::mutex> lock(completionMutex);
+        completionCV.wait(lock, [&] { return activeTasks.load() == 0; });
     }
 
     // 通知所有工作线程停止
+    stop.store(true);
     condition.notify_all();
 
-    // 等待所有工作线程完成
-    for (auto& worker : workers) {
-        if (worker.joinable()) {
-            worker.join();
-        }
-    }
+    // std::jthread 会自动 join，无需手动调用
 
     return allResults;
 }

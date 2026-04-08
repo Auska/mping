@@ -181,7 +181,8 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'C':
                 // 如果提供了参数，使用指定的值，否则默认为30天
                 config.enableDatabase = true;  // 清理功能需要启用数据库
-                config.cleanupDays    = (optarg) ? std::stoi(optarg) : 30;
+                config.cleanupDays =
+                    (optarg) ? std::stoi(optarg) : ConfigDefaults::DEFAULT_CLEANUP_DAYS;
                 break;
             case 'n':
                 try {

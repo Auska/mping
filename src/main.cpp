@@ -216,8 +216,9 @@ int main(int argc, char* argv[]) {
             || config.queryAlerts
                    == -2) {  // -2表示启用告警查询（未指定天数），>=0表示查询指定天数内的告警
             if (!config.enableDatabase) {
-                std::cerr << "Database must be enabled to query alerts. Use -d option to specify "
-                             "database path.\n";
+                std::println(std::cerr,
+                             "Database must be enabled to query alerts. Use -d option to specify "
+                             "database path.");
                 return 1;
             }
 
@@ -230,8 +231,9 @@ int main(int argc, char* argv[]) {
             || config.queryRecoveryRecords
                    == -2) {  // -2表示启用恢复记录查询（未指定天数），>=0表示查询指定天数内的恢复记录
             if (!config.enableDatabase) {
-                std::cerr << "Database must be enabled to query recovery records. Use -d option to "
-                             "specify database path.\n";
+                std::println(std::cerr,
+                             "Database must be enabled to query recovery records. Use -d option to "
+                             "specify database path.");
                 return 1;
             }
 

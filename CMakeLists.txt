@@ -32,6 +32,12 @@ option(USE_POSTGRESQL "Use PostgreSQL database (default is SQLite)" OFF)
 # 选项：是否编译测试程序
 option(BUILD_TESTS "Build test programs" OFF)
 
+# 选项：启用 sanitizers（调试模式）
+option(ENABLE_SANITIZERS "Enable sanitizers (address, undefined)" OFF)
+
+# 选项：启用代码覆盖率
+option(ENABLE_COVERAGE "Enable code coverage" OFF)
+
 # Find SQLite3 library only if not using PostgreSQL
 if(NOT USE_POSTGRESQL)
     find_package(SQLite3 REQUIRED)
@@ -170,6 +176,29 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(mping PRIVATE -O3)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_options(mping PRIVATE -g -O0)
+endif()
+
+# 添加编译警告
+target_compile_options(mping PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -Wpedantic>
+    $<$<CXX_COMPILER_ID:Clang>:-Wall -Wextra -Wpedantic>
+)
+
+# 启用 sanitizers（调试模式）
+if(ENABLE_SANITIZERS)
+    target_compile_options(mping PRIVATE
+        -fsanitize=address,undefined
+        -fno-omit-frame-pointer
+    )
+    target_link_options(mping PRIVATE
+        -fsanitize=address,undefined
+    )
+endif()
+
+# 启用代码覆盖率
+if(ENABLE_COVERAGE)
+    target_compile_options(mping PRIVATE --coverage -O0 -g)
+    target_link_options(mping PRIVATE --coverage)
 endif()
 
 # Link libraries

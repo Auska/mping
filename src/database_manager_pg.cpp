@@ -22,9 +22,7 @@ DatabaseManagerPG::DatabaseManagerPG(const std::string& connectionInfo)
 }
 
 DatabaseManagerPG::~DatabaseManagerPG() {
-    if (conn) {
-        PQfinish(conn);
-    }
+    // 智能指针会自动关闭数据库连接
 }
 
 std::string DatabaseManagerPG::escapeString(const std::string& str) {
@@ -49,18 +47,20 @@ bool DatabaseManagerPG::executeQuery(const std::string& query) {
     }
 
     // 检查连接状态，如果连接断开则尝试重新连接
-    if (PQstatus(conn) != CONNECTION_OK) {
+    if (PQstatus(conn.get()) != CONNECTION_OK) {
         std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
-        PQfinish(conn);
-        conn = PQconnectdb(connInfo.c_str());
+        PQfinish(conn.get());
+        PGconn* rawConn = PQconnectdb(connInfo.c_str());
+        conn.reset(rawConn);
 
-        if (PQstatus(conn) != CONNECTION_OK) {
-            std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn));
+        if (PQstatus(conn.get()) != CONNECTION_OK) {
+            std::println(std::cerr, "Failed to reconnect to database: {}",
+                         PQerrorMessage(conn.get()));
             return false;
         }
     }
 
-    PGresult* res = PQexec(conn, query.c_str());
+    PGresult* res = PQexec(conn.get(), query.c_str());
     if (PQresultStatus(res) != PGRES_COMMAND_OK && PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
@@ -77,18 +77,20 @@ PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
     }
 
     // 检查连接状态，如果连接断开则尝试重新连接
-    if (PQstatus(conn) != CONNECTION_OK) {
+    if (PQstatus(conn.get()) != CONNECTION_OK) {
         std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
-        PQfinish(conn);
-        conn = PQconnectdb(connInfo.c_str());
+        PQfinish(conn.get());
+        PGconn* rawConn = PQconnectdb(connInfo.c_str());
+        conn.reset(rawConn);
 
-        if (PQstatus(conn) != CONNECTION_OK) {
-            std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn));
+        if (PQstatus(conn.get()) != CONNECTION_OK) {
+            std::println(std::cerr, "Failed to reconnect to database: {}",
+                         PQerrorMessage(conn.get()));
             return nullptr;
         }
     }
 
-    PGresult* res = PQexec(conn, query.c_str());
+    PGresult* res = PQexec(conn.get(), query.c_str());
     if (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
@@ -115,11 +117,13 @@ bool DatabaseManagerPG::checkConnection() {
     } else {
         // 服务器未响应，尝试重新连接
         std::println(std::cerr, "Database server is not responding. Attempting to reconnect...");
-        PQfinish(conn);
-        conn = PQconnectdb(connInfo.c_str());
+        PQfinish(conn.get());
+        PGconn* rawConn = PQconnectdb(connInfo.c_str());
+        conn.reset(rawConn);
 
-        if (PQstatus(conn) != CONNECTION_OK) {
-            std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn));
+        if (PQstatus(conn.get()) != CONNECTION_OK) {
+            std::println(std::cerr, "Failed to reconnect to database: {}",
+                         PQerrorMessage(conn.get()));
             return false;
         }
 
@@ -130,17 +134,18 @@ bool DatabaseManagerPG::checkConnection() {
 bool DatabaseManagerPG::initialize() {
     std::lock_guard<std::mutex> lock(dbMutex);
 
-    conn = PQconnectdb(connInfo.c_str());
+    PGconn* rawConn = PQconnectdb(connInfo.c_str());
+    conn.reset(rawConn);
 
-    if (PQstatus(conn) != CONNECTION_OK) {
-        std::println(std::cerr, "Failed to connect to database: {}", PQerrorMessage(conn));
+    if (PQstatus(conn.get()) != CONNECTION_OK) {
+        std::println(std::cerr, "Failed to connect to database: {}", PQerrorMessage(conn.get()));
         return false;
     }
 
     // 设置client_min_messages参数以抑制NOTICE消息
     // 检查连接字符串中是否包含client_min_messages参数
     if (connInfo.find("client_min_messages") == std::string::npos) {
-        PGresult* res = PQexec(conn, "SET client_min_messages TO WARNING;");
+        PGresult* res = PQexec(conn.get(), "SET client_min_messages TO WARNING;");
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
             std::println(std::cerr, "Failed to set client_min_messages: {}",
                          PQresultErrorMessage(res));
@@ -151,7 +156,7 @@ bool DatabaseManagerPG::initialize() {
     }
 
     // 设置连接保持活动状态
-    PGresult* res = PQexec(conn, "SET tcp_keepalives_idle = 60;");
+    PGresult* res = PQexec(conn.get(), "SET tcp_keepalives_idle = 60;");
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Warning: Failed to set tcp_keepalives_idle: {}",
                      PQresultErrorMessage(res));
@@ -245,7 +250,7 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
     }
 
     // 检查数据库连接
-    if (!conn || PQstatus(conn) != CONNECTION_OK) {
+    if (!conn || PQstatus(conn.get()) != CONNECTION_OK) {
         std::cerr << "Database not properly initialized or connection lost" << std::endl;
         return false;
     }
@@ -315,8 +320,8 @@ bool DatabaseManagerPG::insertHostsBatch(
             "last_status = EXCLUDED.last_status, "
             "last_delay = EXCLUDED.last_delay;";
 
-        PGresult* res =
-            PQexecParams(conn, insertSQL, 4, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PGresult* res = PQexecParams(conn.get(), insertSQL, 4, nullptr, paramValues, paramLengths,
+                                     paramFormats, 0);
 
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
             std::println(std::cerr, "Failed to insert host record for IP {}: {}", ip,
@@ -386,8 +391,8 @@ bool DatabaseManagerPG::insertPingResultsBatch(
             "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) "
             "VALUES ($1, $2, $3::integer, $4::boolean, $5)";
 
-        PGresult* res =
-            PQexecParams(conn, insertSQL, 5, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PGresult* res = PQexecParams(conn.get(), insertSQL, 5, nullptr, paramValues, paramLengths,
+                                     paramFormats, 0);
 
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
             std::println(std::cerr, "Failed to insert ping result for IP {}: {}", ip,
@@ -458,8 +463,8 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
     int paramLengths[1]        = {static_cast<int>(ip.length())};
     int paramFormats[1]        = {0};
 
-    PGresult* hostRes =
-        PQexecParams(conn, hostQuerySQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    PGresult* hostRes = PQexecParams(conn.get(), hostQuerySQL, 1, nullptr, paramValues,
+                                     paramLengths, paramFormats, 0);
     if (!hostRes || PQresultStatus(hostRes) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query host information");
         if (hostRes) PQclear(hostRes);
@@ -489,7 +494,7 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
         "FROM ping_results WHERE ip = $1";
 
     PGresult* statsRes =
-        PQexecParams(conn, statsSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PQexecParams(conn.get(), statsSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (!statsRes || PQresultStatus(statsRes) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query statistics");
         if (statsRes) PQclear(statsRes);
@@ -537,7 +542,7 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
         "LIMIT 10";
 
     PGresult* recentRes =
-        PQexecParams(conn, recentSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PQexecParams(conn.get(), recentSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (!recentRes || PQresultStatus(recentRes) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query recent records");
         if (recentRes) PQclear(recentRes);
@@ -579,7 +584,7 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     int paramFormats[1]        = {0};
 
     PGresult* deleteRes =
-        PQexecParams(conn, deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to delete old data: {}", PQresultErrorMessage(deleteRes));
         PQclear(deleteRes);
@@ -598,8 +603,9 @@ void DatabaseManagerPG::cleanupOldData(int days) {
 
     const char* cleanupHostsSQL =
         "DELETE FROM hosts WHERE last_seen < NOW() - ($1 * INTERVAL '1 day')";
-    PGresult* cleanupHostsRes = PQexecParams(conn, cleanupHostsSQL, 1, nullptr, cleanupParamValues,
-                                             cleanupParamLengths, paramFormats, 0);
+    PGresult* cleanupHostsRes =
+        PQexecParams(conn.get(), cleanupHostsSQL, 1, nullptr, cleanupParamValues,
+                     cleanupParamLengths, paramFormats, 0);
 
     if (PQresultStatus(cleanupHostsRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to cleanup old hosts: {}",
@@ -681,7 +687,7 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
         "ON CONFLICT (ip) DO NOTHING";
 
     PGresult* res =
-        PQexecParams(conn, insertSQL, 2, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PQexecParams(conn.get(), insertSQL, 2, nullptr, paramValues, paramLengths, paramFormats, 0);
 
     if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to add alert for IP {}: {}", ip,
@@ -715,7 +721,7 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     int paramFormats[1]        = {0};
 
     PGresult* selectRes =
-        PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PQexecParams(conn.get(), selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
     if (!selectRes || PQresultStatus(selectRes) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query alert information for IP: {}", ip);
         if (selectRes) PQclear(selectRes);
@@ -738,7 +744,7 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     // 使用参数化查询从告警表中删除记录
     const char* deleteSQL = "DELETE FROM alerts WHERE ip = $1";
     PGresult* deleteRes =
-        PQexecParams(conn, deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
 
     if (!deleteRes || PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to remove alert for IP: {}", ip);
@@ -768,7 +774,7 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
             "VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')";
 
         PGresult* insertRes =
-            PQexecParams(conn, insertRecoverySQL, 3, nullptr, insertRecoveryParamValues,
+            PQexecParams(conn.get(), insertRecoverySQL, 3, nullptr, insertRecoveryParamValues,
                          insertRecoveryParamLengths, insertRecoveryParamFormats, 0);
 
         if (!insertRes || PQresultStatus(insertRes) != PGRES_COMMAND_OK) {
@@ -805,12 +811,13 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
         int paramLengths[1]        = {static_cast<int>(daysStr.length())};
         int paramFormats[1]        = {0};
 
-        res = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        res = PQexecParams(conn.get(), selectSQL, 1, nullptr, paramValues, paramLengths,
+                           paramFormats, 0);
     } else {
         // 查询所有告警
         const char* selectSQL =
             "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC";
-        res = PQexec(conn, selectSQL);
+        res = PQexec(conn.get(), selectSQL);
     }
 
     if (!res
@@ -863,13 +870,14 @@ DatabaseManagerPG::getRecoveryRecords(int days) {
         int paramLengths[1]        = {static_cast<int>(daysStr.length())};
         int paramFormats[1]        = {0};
 
-        res = PQexecParams(conn, selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        res = PQexecParams(conn.get(), selectSQL, 1, nullptr, paramValues, paramLengths,
+                           paramFormats, 0);
     } else {
         // 查询所有恢复记录
         const char* selectSQL =
             "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY "
             "recovery_time DESC";
-        res = PQexec(conn, selectSQL);
+        res = PQexec(conn.get(), selectSQL);
     }
 
     if (!res

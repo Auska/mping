@@ -8,6 +8,14 @@
 
 #include "config_file.h"
 
+// 配置默认值常量
+struct ConfigDefaults {
+    static constexpr int MAX_CONCURRENT_PINGS = 50;
+    static constexpr int DEFAULT_CLEANUP_DAYS = 30;
+    static constexpr int DEFAULT_PING_COUNT   = 3;
+    static constexpr int DEFAULT_TIMEOUT      = 3;
+};
+
 class ConfigManager {
    public:
     struct Config {
@@ -16,11 +24,11 @@ class ConfigManager {
         std::string databasePath   = "ping_monitor.db";
         bool silentMode            = false;
         std::string queryIP        = "";
-        int cleanupDays            = -1;    // -1表示不执行清理
-        int queryAlerts            = -1;    // -1表示不查询告警，>=0表示查询指定天数内的告警
-        int queryRecoveryRecords   = -1;    // -1表示不查询恢复记录，>=0表示查询指定天数内的恢复记录
-        int pingCount              = 3;     // 默认发送3个包
-        int timeoutSeconds         = 3;     // 默认超时时间（秒）
+        int cleanupDays            = -1;  // -1表示不执行清理
+        int queryAlerts            = -1;  // -1表示不查询告警，>=0表示查询指定天数内的告警
+        int queryRecoveryRecords   = -1;  // -1表示不查询恢复记录，>=0表示查询指定天数内的恢复记录
+        int pingCount              = ConfigDefaults::DEFAULT_PING_COUNT;
+        int timeoutSeconds         = ConfigDefaults::DEFAULT_TIMEOUT;
         bool loadConfigFile        = true;  // 是否加载配置文件
         std::string configFilePath = "";    // 指定的配置文件路径
 #ifdef USE_POSTGRESQL

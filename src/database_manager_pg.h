@@ -4,6 +4,7 @@
 #include <libpq-fe.h>
 
 #include <map>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -15,7 +16,15 @@
 class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
    private:
     std::string connInfo;
-    PGconn* conn;
+    // 使用智能指针管理 PGconn 连接
+    struct PGconnDeleter {
+        void operator()(PGconn* conn) const {
+            if (conn) {
+                PQfinish(conn);
+            }
+        }
+    };
+    std::unique_ptr<PGconn, PGconnDeleter> conn;
 
     // 转义字符串以防止SQL注入
     std::string escapeString(const std::string& str);
