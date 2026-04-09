@@ -245,13 +245,13 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
                                          short delay, bool success, const std::string& timestamp) {
     // 验证IP地址格式
     if (!isValidIP(ip)) {
-        std::cerr << "Invalid IP address format: " << ip << std::endl;
+        std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
 
     // 检查数据库连接
     if (!conn || PQstatus(conn.get()) != CONNECTION_OK) {
-        std::cerr << "Database not properly initialized or connection lost" << std::endl;
+        std::println(std::cerr, "Database not properly initialized or connection lost");
         return false;
     }
 
@@ -416,7 +416,7 @@ bool DatabaseManagerPG::insertPingResultsBatch(
 bool DatabaseManagerPG::insertPingResults(
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
     if (!conn) {
-        std::cerr << "Database not initialized" << std::endl;
+        std::println(std::cerr, "Database not initialized");
         return false;
     }
 

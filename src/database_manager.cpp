@@ -4,13 +4,12 @@
 
 #include <algorithm>
 #include <cctype>
-#include <iomanip>
+#include <format>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <print>
 #include <regex>
-#include <sstream>
 #include <stdexcept>
 #include <vector>
 
@@ -169,7 +168,7 @@ bool DatabaseManager::initialize() {
         } else {
             errorMsg += "Unknown error";
         }
-        std::cerr << errorMsg << std::endl;
+        std::println(std::cerr, "{}", errorMsg);
         return false;
     }
 
@@ -432,15 +431,15 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
     sqlite3_stmt* statsStmt;
     rc = sqlite3_prepare_v2(db.get(), statsSQL, -1, &statsStmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare statistics query statement: " << sqlite3_errmsg(db.get())
-                  << std::endl;
+        std::println(std::cerr, "Failed to prepare statistics query statement: {}",
+                     sqlite3_errmsg(db.get()));
         return;
     }
 
     sqlite3_bind_text(statsStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
 
     if (sqlite3_step(statsStmt) != SQLITE_ROW) {
-        std::cout << "No ping records found for this IP." << std::endl;
+        std::println(std::cout, "No ping records found for this IP.");
         sqlite3_finalize(statsStmt);
         return;
     }
@@ -456,10 +455,10 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
 
     sqlite3_finalize(statsStmt);
 
-    std::cout << "Total ping records: " << totalRecords << std::endl;
+    std::println(std::cout, "Total ping records: {}", totalRecords);
 
     if (totalRecords == 0) {
-        std::cout << "No ping records found for this IP." << std::endl;
+        std::println(std::cout, "No ping records found for this IP.");
         return;
     }
 
@@ -467,16 +466,13 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
     double successRate = (totalRecords > 0) ? (double)successCount / totalRecords * 100 : 0;
     double failureRate = (totalRecords > 0) ? (double)failureCount / totalRecords * 100 : 0;
 
-    std::cout << "Successful pings: " << successCount << std::endl;
-    std::cout << "Failed pings: " << failureCount << std::endl;
-    std::cout << "Success rate: " << std::fixed << std::setprecision(2) << successRate << "%"
-              << std::endl;
-    std::cout << "Failure rate: " << std::fixed << std::setprecision(2) << failureRate << "%"
-              << std::endl;
-    std::cout << "Average delay (successful pings): " << std::fixed << std::setprecision(2)
-              << avgDelay << "ms" << std::endl;
-    std::cout << "Maximum delay (successful pings): " << maxDelay << "ms" << std::endl;
-    std::cout << "Minimum delay (successful pings): " << minDelay << "ms" << std::endl;
+    std::println(std::cout, "Successful pings: {}", successCount);
+    std::println(std::cout, "Failed pings: {}", failureCount);
+    std::println(std::cout, "Success rate: {:.2f}%", successRate);
+    std::println(std::cout, "Failure rate: {:.2f}%", failureRate);
+    std::println(std::cout, "Average delay (successful pings): {:.2f}ms", avgDelay);
+    std::println(std::cout, "Maximum delay (successful pings): {}ms", maxDelay);
+    std::println(std::cout, "Minimum delay (successful pings): {}ms", minDelay);
 
     // 显示最近的10条记录
     const char* recentSQL =
@@ -485,24 +481,24 @@ void DatabaseManager::queryIPStatistics(const std::string& ip) {
     sqlite3_stmt* recentStmt;
     rc = sqlite3_prepare_v2(db.get(), recentSQL, -1, &recentStmt, 0);
     if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare recent records statement: " << sqlite3_errmsg(db.get())
-                  << std::endl;
+        std::println(std::cerr, "Failed to prepare recent records statement: {}",
+                     sqlite3_errmsg(db.get()));
         return;
     }
 
     sqlite3_bind_text(recentStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
 
-    std::cout << "\nRecent ping records (last 10):" << std::endl;
-    std::cout << "Timestamp           \tDelay\tStatus" << std::endl;
-    std::cout << "--------------------------------------------------------" << std::endl;
+    std::println(std::cout, "\nRecent ping records (last 10):");
+    std::println(std::cout, "Timestamp           \tDelay\tStatus");
+    std::println(std::cout, "--------------------------------------------------------");
 
     while (sqlite3_step(recentStmt) == SQLITE_ROW) {
         const char* timestamp = (const char*)sqlite3_column_text(recentStmt, 2);
         int delay             = sqlite3_column_int(recentStmt, 0);
         int success           = sqlite3_column_int(recentStmt, 1);
 
-        std::cout << (timestamp ? timestamp : "N/A") << "\t" << delay << "ms\t"
-                  << (success ? "Success" : "Failed") << std::endl;
+        std::println(std::cout, "{}\t{}ms\t{}", timestamp ? timestamp : "N/A", delay,
+                     success ? "Success" : "Failed");
     }
     sqlite3_finalize(recentStmt);
 }
@@ -753,10 +749,7 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     // 先执行 COUNT 查询以预分配容器大小
     std::string countSQL;
     if (days >= 0) {
-        std::ostringstream sqlStream;
-        sqlStream << "SELECT COUNT(*) FROM alerts WHERE created_time >= datetime('now', '-" << days
-                  << " days');";
-        countSQL = sqlStream.str();
+        countSQL = std::format("SELECT COUNT(*) FROM alerts WHERE created_time >= datetime('now', '-{} days');", days);
     } else {
         countSQL = "SELECT COUNT(*) FROM alerts;";
     }
@@ -773,11 +766,7 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     std::string selectAlertsSQL;
     if (days >= 0) {
         // 查询指定天数内的告警
-        std::ostringstream sqlStream;
-        sqlStream << "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= "
-                     "datetime('now', '-"
-                  << days << " days') ORDER BY created_time DESC;";
-        selectAlertsSQL = sqlStream.str();
+        selectAlertsSQL = std::format("SELECT ip, hostname, created_time FROM alerts WHERE created_time >= datetime('now', '-{} days') ORDER BY created_time DESC;", days);
     } else {
         // 查询所有告警
         selectAlertsSQL =
@@ -822,11 +811,7 @@ DatabaseManager::getRecoveryRecords(int days) {
     // 先执行 COUNT 查询以预分配容器大小
     std::string countSQL;
     if (days >= 0) {
-        std::ostringstream sqlStream;
-        sqlStream
-            << "SELECT COUNT(*) FROM recovery_records WHERE recovery_time >= datetime('now', '-"
-            << days << " days');";
-        countSQL = sqlStream.str();
+        countSQL = std::format("SELECT COUNT(*) FROM recovery_records WHERE recovery_time >= datetime('now', '-{} days');", days);
     } else {
         countSQL = "SELECT COUNT(*) FROM recovery_records;";
     }
@@ -843,11 +828,7 @@ DatabaseManager::getRecoveryRecords(int days) {
     std::string selectRecordsSQL;
     if (days >= 0) {
         // 查询指定天数内的恢复记录
-        std::ostringstream sqlStream;
-        sqlStream << "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records "
-                     "WHERE recovery_time >= datetime('now', '-"
-                  << days << " days') ORDER BY recovery_time DESC;";
-        selectRecordsSQL = sqlStream.str();
+        selectRecordsSQL = std::format("SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= datetime('now', '-{} days') ORDER BY recovery_time DESC;", days);
     } else {
         // 查询所有恢复记录
         selectRecordsSQL =
