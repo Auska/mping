@@ -176,7 +176,7 @@ bool DatabaseManager::initialize() {
 }
 
 // 为特定IP地址创建表（已重构为使用统一表，此函数保持为空以保持接口兼容性）
-bool DatabaseManager::createIPTable(const std::string& ip) {
+bool DatabaseManager::createIPTable(const std::string& /*ip*/) {
     // 已经在initialize()中创建了统一的ping_results表和索引
     // 此处无需额外操作
     return true;

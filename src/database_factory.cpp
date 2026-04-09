@@ -7,7 +7,7 @@
 #include <memory>
 
 std::unique_ptr<DatabaseInterface> DatabaseFactory::createDatabase(
-    DatabaseType type, const std::string& connectionInfo) {
+    [[maybe_unused]] DatabaseType type, const std::string& connectionInfo) {
 #ifdef USE_POSTGRESQL
     if (type == DatabaseType::POSTGRESQL) {
         return std::make_unique<DatabaseManagerPG>(connectionInfo);
