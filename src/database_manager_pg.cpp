@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
-#include <iomanip>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -30,7 +29,7 @@ std::string DatabaseManagerPG::escapeString(const std::string& str) {
         return str;
     }
 
-    char* escaped = PQescapeLiteral(conn, str.c_str(), str.length());
+    char* escaped = PQescapeLiteral(conn.get(), str.c_str(), str.length());
     if (!escaped) {
         return str;
     }
@@ -263,7 +262,7 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
 
 // 辅助函数：创建IP表和索引（已重构为使用统一表，此函数保持为空以保持接口兼容性）
 bool DatabaseManagerPG::createIPTables(
-    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& /*results*/) {
     // 已经在initialize()中创建了统一的ping_results表和索引
     // 此处无需额外操作
     return true;
