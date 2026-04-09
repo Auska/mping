@@ -1,17 +1,12 @@
 #include "database_manager_pg.h"
 
-#include <algorithm>
-#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <print>
-#include <regex>
 #include <sstream>
 #include <stdexcept>
-
-#include "database_interface.h"
 
 DatabaseManagerPG::DatabaseManagerPG(const std::string& connectionInfo)
     : connInfo(connectionInfo), conn(nullptr) {
@@ -22,21 +17,6 @@ DatabaseManagerPG::DatabaseManagerPG(const std::string& connectionInfo)
 
 DatabaseManagerPG::~DatabaseManagerPG() {
     // 智能指针会自动关闭数据库连接
-}
-
-std::string DatabaseManagerPG::escapeString(const std::string& str) {
-    if (!conn) {
-        return str;
-    }
-
-    char* escaped = PQescapeLiteral(conn.get(), str.c_str(), str.length());
-    if (!escaped) {
-        return str;
-    }
-
-    std::string result(escaped);
-    PQfreemem(escaped);
-    return result;
 }
 
 bool DatabaseManagerPG::executeQuery(const std::string& query) {
@@ -96,38 +76,6 @@ PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
         return nullptr;
     }
     return res;
-}
-
-// 检查数据库连接状态
-bool DatabaseManagerPG::checkConnection() {
-    if (!conn) {
-        return false;
-    }
-
-    // 使用PQping检查连接状态
-    PGPing pingResult = PQping(connInfo.c_str());
-    if (pingResult == PQPING_OK) {
-        // 连接正常
-        return true;
-    } else if (pingResult == PQPING_REJECT) {
-        // 服务器运行但拒绝连接
-        std::println(std::cerr, "Database server is running but rejecting connections");
-        return false;
-    } else {
-        // 服务器未响应，尝试重新连接
-        std::println(std::cerr, "Database server is not responding. Attempting to reconnect...");
-        PQfinish(conn.get());
-        PGconn* rawConn = PQconnectdb(connInfo.c_str());
-        conn.reset(rawConn);
-
-        if (PQstatus(conn.get()) != CONNECTION_OK) {
-            std::println(std::cerr, "Failed to reconnect to database: {}",
-                         PQerrorMessage(conn.get()));
-            return false;
-        }
-
-        return true;
-    }
 }
 
 bool DatabaseManagerPG::initialize() {

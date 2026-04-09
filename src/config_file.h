@@ -8,22 +8,11 @@
 
 class ConfigFile {
    public:
-    // 配置文件路径类型
-    enum class ConfigPath {
-        XDG_CONFIG_HOME,  // $XDG_CONFIG_HOME/mping/config
-        XDG_CONFIG_DIRS,  // $XDG_CONFIG_DIRS/mping/config
-        HOME_CONFIG,      // ~/.config/mping/config
-        HOME_DOT_CONFIG,  // ~/.mpingrc
-        CURRENT_DIR,      // ./mping.conf
-        CURRENT_DIR_DOT   // .mpingrc
-    };
-
     // 配置节和键
     struct ConfigEntry {
         std::string section;
         std::string key;
         std::string value;
-        std::string comment;
     };
 
    private:

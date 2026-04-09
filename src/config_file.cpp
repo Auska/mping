@@ -1,7 +1,5 @@
 #include "config_file.h"
 
-#include <sys/stat.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -51,7 +49,7 @@ bool ConfigFile::parseLine(const std::string& line, std::string& currentSection)
 
         if (!currentSection.empty() && !key.empty()) {
             configData[currentSection][key] = value;
-            originalEntries.push_back({currentSection, key, value, ""});
+            originalEntries.push_back({currentSection, key, value});
         }
     }
 
@@ -246,7 +244,7 @@ void ConfigFile::set(const std::string& section, const std::string& key, const s
         }
     }
     if (!found) {
-        originalEntries.push_back({section, key, value, ""});
+        originalEntries.push_back({section, key, value});
     }
 }
 

@@ -26,9 +26,6 @@ class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
     };
     std::unique_ptr<sqlite3, Sqlite3Deleter> db;
 
-    // 辅助函数：将IP地址转换为有效的表名
-    std::string ipToTableName(const std::string& ip);
-
     // 为特定IP地址创建表
     bool createIPTable(const std::string& ip);
 

@@ -3,7 +3,6 @@
 
 #include <getopt.h>
 
-#include <map>
 #include <string>
 
 #include "config_file.h"

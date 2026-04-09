@@ -2,14 +2,11 @@
 
 #include <sqlite3.h>
 
-#include <algorithm>
-#include <cctype>
 #include <format>
 #include <iostream>
 #include <map>
 #include <mutex>
 #include <print>
-#include <regex>
 #include <stdexcept>
 #include <vector>
 
@@ -21,14 +18,6 @@ DatabaseManager::DatabaseManager(const std::string& path) : dbPath(path), db(nul
 
 DatabaseManager::~DatabaseManager() {
     // 智能指针会自动关闭数据库连接
-}
-
-// 辅助函数：将IP地址转换为有效的表名
-std::string DatabaseManager::ipToTableName(const std::string& ip) {
-    std::string tableName = "ip_" + ip;
-    // 将点号替换为下划线，确保表名有效
-    std::replace(tableName.begin(), tableName.end(), '.', '_');
-    return tableName;
 }
 
 bool DatabaseManager::initialize() {

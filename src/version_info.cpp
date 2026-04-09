@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <print>
-#include <string>
 
 void print_version_info() {
     std::println(std::cout, "{} version {}", PROJECT_NAME, PROJECT_VERSION);

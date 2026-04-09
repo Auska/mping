@@ -26,17 +26,11 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
     };
     std::unique_ptr<PGconn, PGconnDeleter> conn;
 
-    // 转义字符串以防止SQL注入
-    std::string escapeString(const std::string& str);
-
     // 执行不返回结果的查询
     bool executeQuery(const std::string& query);
 
     // 执行返回结果的查询
     PGresult* executeQueryWithResult(const std::string& query);
-
-    // 检查数据库连接状态
-    bool checkConnection();
 
     // 为特定IP地址创建表
     bool createIPTables(

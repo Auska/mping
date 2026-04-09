@@ -1,11 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <algorithm>
-#include <fstream>
-#include <iostream>
 #include <map>
-#include <sstream>
 #include <string>
 
 /**
@@ -22,13 +18,6 @@
  * 
  * @note 如果文件无法打开或格式错误，会输出警告信息但不会抛出异常
  * @note IP 地址格式会被验证，无效的 IP 地址会被跳过
- * 
- * @code
- * auto hosts = readHostsFromFile("ip.txt");
- * for (const auto& [ip, hostname] : hosts) {
- *     std::cout << ip << " -> " << hostname << std::endl;
- * }
- * @endcode
  */
 std::map<std::string, std::string> readHostsFromFile(const std::string& filename);
 
