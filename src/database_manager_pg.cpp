@@ -543,29 +543,46 @@ void DatabaseManagerPG::cleanupOldData(int days) {
 
     std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
 
-    // 使用参数化查询清理hosts表中长时间未见的数据（超过2倍保留天数）
-    std::string cleanupDaysStr        = std::to_string(days * 2);
-    const char* cleanupParamValues[1] = {cleanupDaysStr.c_str()};
-    int cleanupParamLengths[1]        = {static_cast<int>(cleanupDaysStr.length())};
+    // 清理alerts表中超过指定天数的告警记录
+    const char* cleanupAlertsSQL =
+        "DELETE FROM alerts WHERE created_time < NOW() - ($1 * INTERVAL '1 day')";
+    PGresult* cleanupAlertsRes =
+        PQexecParams(conn.get(), cleanupAlertsSQL, 1, nullptr, paramValues, paramLengths,
+                     paramFormats, 0);
 
-    const char* cleanupHostsSQL =
-        "DELETE FROM hosts WHERE last_seen < NOW() - ($1 * INTERVAL '1 day')";
-    PGresult* cleanupHostsRes =
-        PQexecParams(conn.get(), cleanupHostsSQL, 1, nullptr, cleanupParamValues,
-                     cleanupParamLengths, paramFormats, 0);
-
-    if (PQresultStatus(cleanupHostsRes) != PGRES_COMMAND_OK) {
-        std::println(std::cerr, "Failed to cleanup old hosts: {}",
-                     PQresultErrorMessage(cleanupHostsRes));
-        PQclear(cleanupHostsRes);
+    if (PQresultStatus(cleanupAlertsRes) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to cleanup old alerts: {}",
+                     PQresultErrorMessage(cleanupAlertsRes));
+        PQclear(cleanupAlertsRes);
         return;
     }
 
-    int hostsDeleted = std::atoi(PQcmdTuples(cleanupHostsRes));
-    PQclear(cleanupHostsRes);
+    int alertsDeleted = std::atoi(PQcmdTuples(cleanupAlertsRes));
+    PQclear(cleanupAlertsRes);
 
-    if (hostsDeleted > 0) {
-        std::println(std::cout, "Deleted {} old host records", hostsDeleted);
+    if (alertsDeleted > 0) {
+        std::println(std::cout, "Deleted {} old alert records", alertsDeleted);
+    }
+
+    // 清理recovery_records表中超过指定天数的恢复记录
+    const char* cleanupRecoverySQL =
+        "DELETE FROM recovery_records WHERE recovery_time < NOW() - ($1 * INTERVAL '1 day')";
+    PGresult* cleanupRecoveryRes =
+        PQexecParams(conn.get(), cleanupRecoverySQL, 1, nullptr, paramValues, paramLengths,
+                     paramFormats, 0);
+
+    if (PQresultStatus(cleanupRecoveryRes) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to cleanup old recovery records: {}",
+                     PQresultErrorMessage(cleanupRecoveryRes));
+        PQclear(cleanupRecoveryRes);
+        return;
+    }
+
+    int recoveryDeleted = std::atoi(PQcmdTuples(cleanupRecoveryRes));
+    PQclear(cleanupRecoveryRes);
+
+    if (recoveryDeleted > 0) {
+        std::println(std::cout, "Deleted {} old recovery records", recoveryDeleted);
     }
 
     std::println(std::cout, "Cleanup completed.");

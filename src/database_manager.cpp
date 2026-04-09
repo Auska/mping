@@ -524,31 +524,58 @@ void DatabaseManager::cleanupOldData(int days) {
     int totalDeleted = sqlite3_changes(db.get());
     std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
 
-    // 使用参数化查询清理hosts表中长时间未见的数据（超过2倍保留天数）
-    const char* cleanupHostsSQL =
-        "DELETE FROM hosts WHERE last_seen < datetime('now', '-' || ? || ' days');";
-    sqlite3_stmt* cleanupStmt;
-    rc = sqlite3_prepare_v2(db.get(), cleanupHostsSQL, -1, &cleanupStmt, 0);
+    // 清理alerts表中超过指定天数的告警记录
+    const char* cleanupAlertsSQL =
+        "DELETE FROM alerts WHERE created_time < datetime('now', '-' || ? || ' days');";
+    sqlite3_stmt* cleanupAlertsStmt;
+    rc = sqlite3_prepare_v2(db.get(), cleanupAlertsSQL, -1, &cleanupAlertsStmt, 0);
     if (rc != SQLITE_OK) {
-        std::println(std::cerr, "Failed to prepare cleanup hosts statement: {}",
+        std::println(std::cerr, "Failed to prepare cleanup alerts statement: {}",
                      sqlite3_errmsg(db.get()));
         return;
     }
 
-    sqlite3_bind_int(cleanupStmt, 1, days * 2);
-    rc = sqlite3_step(cleanupStmt);
+    sqlite3_bind_int(cleanupAlertsStmt, 1, days);
+    rc = sqlite3_step(cleanupAlertsStmt);
     if (rc != SQLITE_DONE) {
-        std::println(std::cerr, "Failed to execute cleanup hosts statement: {}",
+        std::println(std::cerr, "Failed to execute cleanup alerts statement: {}",
                      sqlite3_errmsg(db.get()));
-        sqlite3_finalize(cleanupStmt);
+        sqlite3_finalize(cleanupAlertsStmt);
         return;
     }
 
-    int deletedHosts = sqlite3_changes(db.get());
-    sqlite3_finalize(cleanupStmt);
+    int deletedAlerts = sqlite3_changes(db.get());
+    sqlite3_finalize(cleanupAlertsStmt);
 
-    if (deletedHosts > 0) {
-        std::println(std::cout, "Deleted {} old host records", deletedHosts);
+    if (deletedAlerts > 0) {
+        std::println(std::cout, "Deleted {} old alert records", deletedAlerts);
+    }
+
+    // 清理recovery_records表中超过指定天数的恢复记录
+    const char* cleanupRecoverySQL =
+        "DELETE FROM recovery_records WHERE recovery_time < datetime('now', '-' || ? || ' days');";
+    sqlite3_stmt* cleanupRecoveryStmt;
+    rc = sqlite3_prepare_v2(db.get(), cleanupRecoverySQL, -1, &cleanupRecoveryStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::println(std::cerr, "Failed to prepare cleanup recovery records statement: {}",
+                     sqlite3_errmsg(db.get()));
+        return;
+    }
+
+    sqlite3_bind_int(cleanupRecoveryStmt, 1, days);
+    rc = sqlite3_step(cleanupRecoveryStmt);
+    if (rc != SQLITE_DONE) {
+        std::println(std::cerr, "Failed to execute cleanup recovery records statement: {}",
+                     sqlite3_errmsg(db.get()));
+        sqlite3_finalize(cleanupRecoveryStmt);
+        return;
+    }
+
+    int deletedRecovery = sqlite3_changes(db.get());
+    sqlite3_finalize(cleanupRecoveryStmt);
+
+    if (deletedRecovery > 0) {
+        std::println(std::cout, "Deleted {} old recovery records", deletedRecovery);
     }
 
     std::println(std::cout, "Cleanup completed.");

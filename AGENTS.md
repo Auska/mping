@@ -275,13 +275,17 @@ mping -S /path/to/config.conf
 
 ## 数据库架构
 - **`hosts` 表**：存储 IP 地址和主机名及创建和最后访问时间戳
-- **IP 特定表**：每个 IP 有自己的表（SQLite 中为 `ip_x_x_x_x`，PostgreSQL 中为 `ping_x_x_x_x`）存储 ping 结果（延迟、成功状态和时间戳）
-- **告警表**：跟踪主机状态告警
-- **恢复记录表**：记录主机从故障中恢复的信息
+- **`ping_results` 表**：统一存储所有 ping 结果（IP、主机名、延迟、成功状态和时间戳）
+- **`alerts` 表**：跟踪主机状态告警
+- **`recovery_records` 表**：记录主机从故障中恢复的信息
 
-### SQLite vs PostgreSQL 表命名
-- **SQLite**: `ip_10_224_1_11`
-- **PostgreSQL**: `ping_10_224_1_11`
+### 数据清理
+`-C` / `--cleanup` 命令清理以下表中的旧数据：
+- **`ping_results`**：删除超过指定天数的记录
+- **`alerts`**：删除超过指定天数的告警记录
+- **`recovery_records`**：删除超过指定天数的恢复记录
+
+> **注意**：`hosts` 表不会被清理，以保留主机列表信息。
 
 ## 测试
 项目使用 Catch2 v3.5.0 测试框架进行单元测试。

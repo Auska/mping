@@ -374,6 +374,71 @@ TEST_CASE("DatabaseManager alert management edge cases", "[database][sqlite]") {
     std::filesystem::remove(testDb);
 }
 
+TEST_CASE("DatabaseManager cleanupOldData clears all tables", "[database][sqlite]") {
+    std::string testDb = "/tmp/test_mping_XXXXXX.db";
+    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    DatabaseManager db(testDb);
+    REQUIRE(db.initialize() == true);
+
+    SECTION("Cleanup clears ping_results with old timestamps") {
+        // Insert ping result with old timestamp
+        REQUIRE(db.insertPingResult("192.168.1.1", "host1", 10, true, "2024-01-01 00:00:00")
+                == true);
+
+        // Cleanup with 1 day should clear old data
+        REQUIRE_NOTHROW(db.cleanupOldData(1));
+
+        // Verify hosts still exists (hosts should NOT be cleaned)
+        auto hosts = db.getAllHosts();
+        REQUIRE(hosts.size() == 1);
+        REQUIRE(hosts["192.168.1.1"] == "host1");
+    }
+
+    SECTION("Cleanup preserves hosts table") {
+        // Insert multiple hosts with old timestamps
+        std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results = {
+            {"192.168.1.1", "host1", 10, true, "2024-01-01 00:00:00"},
+            {"192.168.1.2", "host2", 20, true, "2024-01-01 00:00:01"},
+            {"192.168.1.3", "host3", 30, true, "2024-01-01 00:00:02"}};
+        REQUIRE(db.insertPingResults(results) == true);
+
+        auto hostsBefore = db.getAllHosts();
+        REQUIRE(hostsBefore.size() == 3);
+
+        // Cleanup with 1 day
+        REQUIRE_NOTHROW(db.cleanupOldData(1));
+
+        // Verify hosts are preserved
+        auto hostsAfter = db.getAllHosts();
+        REQUIRE(hostsAfter.size() == 3);
+        REQUIRE(hostsAfter["192.168.1.1"] == "host1");
+        REQUIRE(hostsAfter["192.168.1.2"] == "host2");
+        REQUIRE(hostsAfter["192.168.1.3"] == "host3");
+    }
+
+    SECTION("Cleanup with alerts and recovery records does not fail") {
+        // Insert ping result first to create host entry
+        REQUIRE(db.insertPingResult("192.168.1.1", "host1", 10, true, "2024-01-01 00:00:00")
+                == true);
+
+        // Add alert and create recovery record
+        REQUIRE(db.addAlert("192.168.1.1", "host1") == true);
+        REQUIRE(db.removeAlert("192.168.1.1") == true);
+
+        // Cleanup should not fail even with alerts and recovery records
+        REQUIRE_NOTHROW(db.cleanupOldData(30));
+
+        // Verify hosts table is preserved
+        auto hosts = db.getAllHosts();
+        REQUIRE(hosts.size() == 1);
+    }
+
+    std::filesystem::remove(testDb);
+}
+
 TEST_CASE("DatabaseManager batch operations", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
     int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
