@@ -12,9 +12,9 @@
 #include "ping_manager.h"
 #include "utils.h"
 
-// 函数：处理数据库操作的通用模式
-bool initializeDatabase(std::unique_ptr<DatabaseInterface>& db) {
-    if (!db->initialize()) {
+// 函数：初始化数据库
+bool initializeDatabase(DatabaseInterface* db) {
+    if (!db || !db->initialize()) {
         std::println(std::cerr, "Failed to initialize database");
         return false;
     }
@@ -22,28 +22,24 @@ bool initializeDatabase(std::unique_ptr<DatabaseInterface>& db) {
 }
 
 // 函数：查询IP统计信息
-void queryIPStatistics(const std::string& databasePath, const std::string& queryIP,
-                       DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+void queryIPStatistics(DatabaseInterface* db, const std::string& queryIP) {
+    if (!db) {
         return;
     }
     db->queryIPStatistics(queryIP);
 }
 
 // 函数：清理旧数据
-void cleanupOldData(const std::string& databasePath, int cleanupDays, DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+void cleanupOldData(DatabaseInterface* db, int cleanupDays) {
+    if (!db) {
         return;
     }
     db->cleanupOldData(cleanupDays);
 }
 
 // 函数：查询活动告警
-void queryActiveAlerts(const std::string& databasePath, int queryAlerts, DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+void queryActiveAlerts(DatabaseInterface* db, int queryAlerts) {
+    if (!db) {
         return;
     }
 
@@ -69,10 +65,8 @@ void queryActiveAlerts(const std::string& databasePath, int queryAlerts, Databas
 }
 
 // 函数：查询恢复记录
-void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryRecords,
-                          DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+void queryRecoveryRecords(DatabaseInterface* db, int queryRecoveryRecords) {
+    if (!db) {
         return;
     }
 
@@ -102,10 +96,8 @@ void queryRecoveryRecords(const std::string& databasePath, int queryRecoveryReco
 }
 
 // 函数：获取所有主机
-std::map<std::string, std::string> getAllHosts(const std::string& databasePath,
-                                               DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+std::map<std::string, std::string> getAllHosts(DatabaseInterface* db) {
+    if (!db) {
         return {};
     }
     return db->getAllHosts();
@@ -113,11 +105,9 @@ std::map<std::string, std::string> getAllHosts(const std::string& databasePath,
 
 // 函数：插入ping结果
 bool insertPingResults(
-    const std::string& databasePath,
-    const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults,
-    DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+    DatabaseInterface* db,
+    const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults) {
+    if (!db) {
         return false;
     }
 
@@ -134,11 +124,9 @@ bool insertPingResults(
 
 // 函数：处理告警逻辑
 bool processAlerts(
-    const std::string& databasePath,
-    const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults,
-    DatabaseType dbType) {
-    auto db = DatabaseFactory::createDatabase(dbType, databasePath);
-    if (!initializeDatabase(db)) {
+    DatabaseInterface* db,
+    const std::vector<std::tuple<std::string, std::string, bool, short, std::string>>& allResults) {
+    if (!db) {
         return false;
     }
 
@@ -185,6 +173,9 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
+        // 创建数据库实例（延迟创建，仅在需要时）
+        std::unique_ptr<DatabaseInterface> db;
+
         // 如果提供了查询IP，则只显示查询结果，不执行ping操作
         if (!config.queryIP.empty()) {
             if (!config.enableDatabase) {
@@ -194,7 +185,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            queryIPStatistics(config.databasePath, config.queryIP, dbType);
+            db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+            if (!initializeDatabase(db.get())) {
+                return 1;
+            }
+            queryIPStatistics(db.get(), config.queryIP);
             return 0;
         }
 
@@ -207,7 +202,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            cleanupOldData(config.databasePath, config.cleanupDays, dbType);
+            db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+            if (!initializeDatabase(db.get())) {
+                return 1;
+            }
+            cleanupOldData(db.get(), config.cleanupDays);
             return 0;
         }
 
@@ -222,7 +221,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            queryActiveAlerts(config.databasePath, config.queryAlerts, dbType);
+            db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+            if (!initializeDatabase(db.get())) {
+                return 1;
+            }
+            queryActiveAlerts(db.get(), config.queryAlerts);
             return 0;
         }
 
@@ -237,7 +240,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
 
-            queryRecoveryRecords(config.databasePath, config.queryRecoveryRecords, dbType);
+            db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+            if (!initializeDatabase(db.get())) {
+                return 1;
+            }
+            queryRecoveryRecords(db.get(), config.queryRecoveryRecords);
             return 0;
         }
 
@@ -250,7 +257,11 @@ int main(int argc, char* argv[]) {
         if (!config.filename.empty()) {
             hosts = readHostsFromFile(config.filename);
         } else if (config.enableDatabase) {
-            hosts = getAllHosts(config.databasePath, dbType);
+            db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+            if (!initializeDatabase(db.get())) {
+                return 1;
+            }
+            hosts = getAllHosts(db.get());
         } else {
             // 默认从ip.txt文件读取
             hosts = readHostsFromFile("ip.txt");
@@ -269,32 +280,26 @@ int main(int argc, char* argv[]) {
 
         // 如果启用了数据库，则初始化数据库管理器并存储结果
         if (config.enableDatabase) {
-#ifdef USE_POSTGRESQL
-            if (!insertPingResults(config.databasePath, allResults, dbType)) {
-                if (dbType == DatabaseType::POSTGRESQL) {
-                    std::println(std::cerr,
-                                 "Failed to insert ping results into PostgreSQL database");
-                } else {
-                    std::println(std::cerr, "Failed to insert ping results into database");
+            // 如果数据库实例尚未创建，则创建
+            if (!db) {
+                db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+                if (!initializeDatabase(db.get())) {
+                    return 1;
                 }
-                return 1;
             }
-#else
-            if (!insertPingResults(config.databasePath, allResults, dbType)) {
-                if (dbType == DatabaseType::POSTGRESQL) {
-                    std::println(std::cerr,
-                                 "Failed to insert ping results into PostgreSQL database");
-                } else {
-                    std::println(std::cerr, "Failed to insert ping results into database");
-                }
-                return 1;
-            }
-#endif
-        }
 
-        // 处理告警逻辑（仅在启用数据库时）
-        if (config.enableDatabase) {
-            if (!processAlerts(config.databasePath, allResults, dbType)) {
+            if (!insertPingResults(db.get(), allResults)) {
+                if (dbType == DatabaseType::POSTGRESQL) {
+                    std::println(std::cerr,
+                                 "Failed to insert ping results into PostgreSQL database");
+                } else {
+                    std::println(std::cerr, "Failed to insert ping results into database");
+                }
+                return 1;
+            }
+
+            // 处理告警逻辑
+            if (!processAlerts(db.get(), allResults)) {
                 return 1;
             }
         }

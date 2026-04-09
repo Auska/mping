@@ -2,8 +2,9 @@
 #define DATABASE_BASE_H
 
 #include <mutex>
-#include <regex>
 #include <string>
+
+#include "ip_validator.h"
 
 // 数据库基类，提取公共逻辑
 class DatabaseBase {
@@ -12,11 +13,7 @@ class DatabaseBase {
 
     // 验证IP地址格式
     bool isValidIP(const std::string& ip) const {
-        // 使用正则表达式验证IPv4地址格式
-        std::regex ipPattern(
-            "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)"
-            "$");
-        return std::regex_match(ip, ipPattern);
+        return IPValidator::isValidIPv4(ip);
     }
 
     // 验证IP地址列表

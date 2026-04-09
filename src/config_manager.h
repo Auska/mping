@@ -7,14 +7,7 @@
 #include <string>
 
 #include "config_file.h"
-
-// 配置默认值常量
-struct ConfigDefaults {
-    static constexpr int MAX_CONCURRENT_PINGS = 50;
-    static constexpr int DEFAULT_CLEANUP_DAYS = 30;
-    static constexpr int DEFAULT_PING_COUNT   = 3;
-    static constexpr int DEFAULT_TIMEOUT      = 3;
-};
+#include "constants.h"
 
 class ConfigManager {
    public:

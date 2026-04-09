@@ -1,7 +1,8 @@
+#include "ip_validator.h"
 #include "utils.h"
 
 #include <print>
-#include <regex>
+#include <sstream>
 #include <stdexcept>
 
 std::map<std::string, std::string> readHostsFromFile(const std::string& filename) {
@@ -32,9 +33,7 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
                 std::string ip, hostname;
                 if (iss >> ip >> hostname) {
                     // 验证 IP 格式
-                    std::regex ipPattern(
-                        R"((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))");
-                    if (!std::regex_match(ip, ipPattern)) {
+                    if (!IPValidator::isValidIPv4(ip)) {
                         std::println(std::cerr,
                                      "Warning: Invalid IP format on line {} in file {}: {}",
                                      lineNumber, filename, ip);
