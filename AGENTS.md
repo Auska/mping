@@ -96,6 +96,7 @@ DatabaseManager        DatabaseManagerPG
 7. **线程安全**：使用互斥锁和条件变量确保线程安全
 8. **使用 Catch2 v3 进行单元测试**：测试框架使用 Catch2 v3.5.0
 9. **代码格式化**：使用 clang-format 保持代码风格一致（Google 风格基础）
+10. **PostgreSQL 时间列必须使用 TIMESTAMPTZ**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区）。`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换。新增迁移逻辑时，需在 `migrateSchema()` 中处理列类型转换
 
 ### 代码格式化规范
 项目使用 `.clang-format` 配置文件定义代码风格标准：
@@ -346,6 +347,7 @@ ctest --verbose
 - **数据库基类**：通过 DatabaseBase 提供公共逻辑（如 IP 验证）
 - **现代 C++ 特性**：使用 C++23 标准的新特性，如 `std::println` 用于格式化输出
 - **时间处理**：所有时间戳都使用 UTC 时间以确保跨时区的一致性
+- **PostgreSQL 时间列**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区），`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换
 - **工厂模式**：使用 DatabaseFactory 根据连接字符串自动检测数据库类型
 - **线程安全**：使用互斥锁（`std::mutex`）和条件变量（`std::condition_variable`）确保线程安全
 - **测试驱动开发**：使用 Catch2 框架编写和运行单元测试
