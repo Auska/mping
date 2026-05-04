@@ -115,8 +115,8 @@ bool DatabaseManagerPG::initialize() {
         CREATE TABLE IF NOT EXISTS hosts (
             ip TEXT PRIMARY KEY,
             hostname TEXT,
-            created_time TIMESTAMP DEFAULT (now() AT TIME ZONE 'UTC'),
-            last_seen TIMESTAMP,
+            created_time TIMESTAMPTZ DEFAULT NOW(),
+            last_seen TIMESTAMPTZ,
             last_status BOOLEAN,
             last_delay INTEGER
         );
@@ -135,7 +135,7 @@ bool DatabaseManagerPG::initialize() {
             hostname TEXT,
             delay INTEGER,
             success BOOLEAN,
-            timestamp TIMESTAMP NOT NULL
+            timestamp TIMESTAMPTZ NOT NULL
         );
     )";
 
@@ -160,7 +160,7 @@ bool DatabaseManagerPG::initialize() {
         CREATE TABLE IF NOT EXISTS alerts (
             ip TEXT PRIMARY KEY,
             hostname TEXT,
-            created_time TIMESTAMP
+            created_time TIMESTAMPTZ
         );
     )";
 
@@ -175,8 +175,8 @@ bool DatabaseManagerPG::initialize() {
             id SERIAL PRIMARY KEY,
             ip TEXT,
             hostname TEXT,
-            alert_time TIMESTAMP,
-            recovery_time TIMESTAMP
+            alert_time TIMESTAMPTZ,
+            recovery_time TIMESTAMPTZ
         );
     )";
 
@@ -185,6 +185,62 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
 
+    // 迁移旧 TIMESTAMP 列为 TIMESTAMPTZ
+    if (!migrateSchema()) {
+        std::println(std::cerr, "Warning: Schema migration incomplete, continuing anyway");
+    }
+
+    return true;
+}
+
+bool DatabaseManagerPG::migrateSchema() {
+    // 确保会话时区为 UTC，这样现有 TIMESTAMP 数据会被正确解释为 UTC 时间
+    if (!executeQuery("SET TIME ZONE 'UTC';")) {
+        std::println(std::cerr, "Failed to set timezone to UTC for migration");
+        return false;
+    }
+
+    // 查询所有需要迁移的列：类型为 timestamp without time zone 的列
+    const char* checkSQL = R"(
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND data_type = 'timestamp without time zone'
+          AND table_name IN ('hosts', 'ping_results', 'alerts', 'recovery_records')
+        ORDER BY table_name, column_name;
+    )";
+
+    PGresult* res = executeQueryWithResult(checkSQL);
+    if (!res) {
+        std::println(std::cerr, "Failed to check schema for migration");
+        return false;
+    }
+
+    int colCount = PQntuples(res);
+    if (colCount == 0) {
+        PQclear(res);
+        return true;  // 没有需要迁移的列
+    }
+
+    std::println(std::cout, "Migrating {} timestamp column(s) to timestamptz...", colCount);
+
+    for (int i = 0; i < colCount; i++) {
+        std::string table  = PQgetvalue(res, i, 0);
+        std::string column = PQgetvalue(res, i, 1);
+
+        std::string alterSQL =
+            "ALTER TABLE " + table + " ALTER COLUMN " + column + " TYPE TIMESTAMPTZ";
+        std::println(std::cout, "  Migrating {}.{}...", table, column);
+
+        if (!executeQuery(alterSQL)) {
+            std::println(std::cerr, "Failed to migrate {}.{} to TIMESTAMPTZ", table, column);
+            PQclear(res);
+            return false;
+        }
+    }
+
+    PQclear(res);
+    std::println(std::cout, "Schema migration completed.");
     return true;
 }
 
@@ -260,7 +316,7 @@ bool DatabaseManagerPG::insertHostsBatch(
         // 使用参数化查询
         const char* insertSQL =
             "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) "
-            "VALUES ($1, $2, NOW() AT TIME ZONE 'UTC', $4::boolean, $3::integer) "
+            "VALUES ($1, $2, NOW(), $4::boolean, $3::integer) "
             "ON CONFLICT (ip) DO UPDATE SET "
             "hostname = EXCLUDED.hostname, "
             "last_seen = EXCLUDED.last_seen, "
@@ -647,7 +703,7 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
 
     const char* insertSQL =
         "INSERT INTO alerts (ip, hostname, created_time) "
-        "VALUES ($1, $2, NOW() AT TIME ZONE 'UTC') "
+        "VALUES ($1, $2, NOW()) "
         "ON CONFLICT (ip) DO NOTHING";
 
     PGresult* res =
@@ -735,7 +791,7 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
 
         const char* insertRecoverySQL =
             "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) "
-            "VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')";
+            "VALUES ($1, $2, $3, NOW())";
 
         PGresult* insertRes =
             PQexecParams(conn.get(), insertRecoverySQL, 3, nullptr, insertRecoveryParamValues,

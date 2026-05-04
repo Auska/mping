@@ -44,6 +44,9 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
     bool insertPingResultsBatch(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
+    // 将旧 TIMESTAMP 列迁移为 TIMESTAMPTZ
+    bool migrateSchema();
+
    public:
     // 构造函数和析构函数
     explicit DatabaseManagerPG(const std::string& connectionInfo);
