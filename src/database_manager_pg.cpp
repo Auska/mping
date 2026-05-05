@@ -644,6 +644,38 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     std::println(std::cout, "Cleanup completed.");
 }
 
+void DatabaseManagerPG::cleanupOldPingResults(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    if (!conn) {
+        std::println(std::cerr, "Database not initialized");
+        return;
+    }
+
+    std::println(std::cout, "Cleaning up ping_results older than {} days...", days);
+
+    const char* deleteSQL =
+        "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
+    std::string daysStr        = std::to_string(days);
+    const char* paramValues[1] = {daysStr.c_str()};
+    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
+    int paramFormats[1]        = {0};
+
+    PGresult* deleteRes =
+        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to delete old ping results: {}",
+                     PQresultErrorMessage(deleteRes));
+        PQclear(deleteRes);
+        return;
+    }
+
+    int totalDeleted = std::atoi(PQcmdTuples(deleteRes));
+    PQclear(deleteRes);
+
+    std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
+}
+
 std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
     std::lock_guard<std::mutex> lock(dbMutex);
     std::map<std::string, std::string> hosts;

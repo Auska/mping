@@ -302,6 +302,9 @@ int main(int argc, char* argv[]) {
             if (!processAlerts(db.get(), allResults)) {
                 return 1;
             }
+
+            // 每次检查后自动清理ping_results表中超过30天的旧记录
+            db->cleanupOldPingResults(30);
         }
 
         // 打印所有IP地址和结果（除非启用静默模式）

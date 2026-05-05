@@ -70,6 +70,9 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
     // 清理旧数据
     void cleanupOldData(int days) override;
 
+    // 仅清理ping_results表中的旧数据
+    void cleanupOldPingResults(int days) override;
+
     // 获取所有主机
     std::map<std::string, std::string> getAllHosts() override;
 

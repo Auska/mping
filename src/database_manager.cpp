@@ -581,6 +581,38 @@ void DatabaseManager::cleanupOldData(int days) {
     std::println(std::cout, "Cleanup completed.");
 }
 
+void DatabaseManager::cleanupOldPingResults(int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    if (!db) {
+        std::println(std::cerr, "Database not initialized");
+        return;
+    }
+
+    std::println(std::cout, "Cleaning up ping_results older than {} days...", days);
+
+    const char* deleteSQL =
+        "DELETE FROM ping_results WHERE timestamp < datetime('now', '-' || ? || ' days');";
+    sqlite3_stmt* deleteStmt;
+    int rc = sqlite3_prepare_v2(db.get(), deleteSQL, -1, &deleteStmt, 0);
+    if (rc != SQLITE_OK) {
+        std::println(std::cerr, "Failed to prepare delete statement: {}", sqlite3_errmsg(db.get()));
+        return;
+    }
+
+    sqlite3_bind_int(deleteStmt, 1, days);
+    rc = sqlite3_step(deleteStmt);
+    if (rc != SQLITE_DONE) {
+        std::println(std::cerr, "Failed to execute delete statement: {}", sqlite3_errmsg(db.get()));
+        sqlite3_finalize(deleteStmt);
+        return;
+    }
+    sqlite3_finalize(deleteStmt);
+
+    int totalDeleted = sqlite3_changes(db.get());
+    std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
+}
+
 std::map<std::string, std::string> DatabaseManager::getAllHosts() {
     std::lock_guard<std::mutex> lock(dbMutex);
     std::map<std::string, std::string> hosts;

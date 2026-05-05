@@ -28,6 +28,9 @@ class DatabaseInterface {
     // 清理旧数据
     virtual void cleanupOldData(int days) = 0;
 
+    // 仅清理ping_results表中的旧数据
+    virtual void cleanupOldPingResults(int days) = 0;
+
     // 获取所有主机
     virtual std::map<std::string, std::string> getAllHosts() = 0;
 
