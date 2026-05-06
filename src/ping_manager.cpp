@@ -148,7 +148,7 @@ PingManager::performPingInternal(const std::map<std::string, std::string>& hosts
 std::vector<std::tuple<std::string, std::string, bool, short, std::string>>
 PingManager::performPing(const std::map<std::string, std::string>& hosts, int pingCount,
                          int timeoutSeconds, size_t maxConcurrent) {
-    auto allResults = performPingInternal(hosts, pingCount, timeoutSeconds, maxConcurrent);
+    auto allResults = performPingInternal(hosts, ConfigDefaults::FIRST_ROUND_PING_COUNT, ConfigDefaults::FIRST_ROUND_TIMEOUT, maxConcurrent);
 
     // 收集第一轮失败的主机
     std::map<std::string, std::string> failedHosts;
@@ -161,7 +161,7 @@ PingManager::performPing(const std::map<std::string, std::string>& hosts, int pi
     // 对失败的主机开启第二轮 ping 检查，保证结果正确
     if (!failedHosts.empty()) {
         auto retryResults =
-            performPingInternal(failedHosts, pingCount, timeoutSeconds, maxConcurrent);
+            performPingInternal(failedHosts, ConfigDefaults::RETRY_ROUND_PING_COUNT, ConfigDefaults::RETRY_ROUND_TIMEOUT, maxConcurrent);
 
         for (auto& result : allResults) {
             const std::string& ip = std::get<0>(result);
