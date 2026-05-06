@@ -146,8 +146,8 @@ PingManager::performPingInternal(const std::map<std::string, std::string>& hosts
 }
 
 std::vector<std::tuple<std::string, std::string, bool, short, std::string>>
-PingManager::performPing(const std::map<std::string, std::string>& hosts, int pingCount,
-                         int timeoutSeconds, size_t maxConcurrent) {
+PingManager::performPing(const std::map<std::string, std::string>& hosts,
+                         size_t maxConcurrent) {
     auto allResults = performPingInternal(hosts, ConfigDefaults::FIRST_ROUND_PING_COUNT, ConfigDefaults::FIRST_ROUND_TIMEOUT, maxConcurrent);
 
     // 收集第一轮失败的主机

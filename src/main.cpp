@@ -276,7 +276,7 @@ int main(int argc, char* argv[]) {
         PingManager pingManager;
         // 使用默认最大并发数执行ping操作
         std::vector<std::tuple<std::string, std::string, bool, short, std::string>> allResults =
-            pingManager.performPing(hosts, config.pingCount, config.timeoutSeconds);
+            pingManager.performPing(hosts);
 
         // 如果启用了数据库，则初始化数据库管理器并存储结果
         if (config.enableDatabase) {

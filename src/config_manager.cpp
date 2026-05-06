@@ -46,12 +46,6 @@ void ConfigManager::applyConfigFileSettings() {
     if (configFile.has("general", "silent")) {
         config.silentMode = configFile.getBool("general", "silent", config.silentMode);
     }
-    if (configFile.has("general", "ping_count")) {
-        config.pingCount = configFile.getInt("general", "ping_count", config.pingCount);
-    }
-    if (configFile.has("general", "timeout")) {
-        config.timeoutSeconds = configFile.getInt("general", "timeout", config.timeoutSeconds);
-    }
     if (configFile.has("general", "cleanup_days")) {
         config.cleanupDays = configFile.getInt("general", "cleanup_days", config.cleanupDays);
     }
@@ -86,8 +80,6 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
     configFile.setBool("general", "database", config.enableDatabase);
     configFile.set("general", "database_path", config.databasePath);
     configFile.setBool("general", "silent", config.silentMode);
-    configFile.setInt("general", "ping_count", config.pingCount);
-    configFile.setInt("general", "timeout", config.timeoutSeconds);
     configFile.setInt("general", "cleanup_days", config.cleanupDays);
 #ifdef USE_POSTGRESQL
     configFile.setBool("general", "use_postgresql", config.usePostgreSQL);
@@ -112,8 +104,6 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                                           {"recovery", optional_argument, nullptr, 'r'},
                                           {"silent", no_argument, nullptr, 's'},
                                           {"cleanup", optional_argument, nullptr, 'C'},
-                                          {"count", required_argument, nullptr, 'n'},
-                                          {"timeout", required_argument, nullptr, 't'},
                                           {"version", no_argument, nullptr, 'v'},
                                           {"config", required_argument, nullptr, 'c'},
                                           {"no-config", no_argument, nullptr, 'N'},
@@ -122,7 +112,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
 
     // 解析命令行参数
     int opt;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::n:t:vc:NS::", long_options, nullptr))
+    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::vc:NS::", long_options, nullptr))
            != -1) {
         switch (opt) {
             case 'h':
@@ -184,30 +174,6 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.cleanupDays =
                     (optarg) ? std::stoi(optarg) : ConfigDefaults::DEFAULT_CLEANUP_DAYS;
                 break;
-            case 'n':
-                try {
-                    config.pingCount = std::stoi(optarg);
-                    if (config.pingCount <= 0) {
-                        std::println(std::cerr, "Ping count must be a positive integer.");
-                        return false;
-                    }
-                } catch (const std::exception& e) {
-                    std::println(std::cerr, "Invalid value for ping count: {}", optarg);
-                    return false;
-                }
-                break;
-            case 't':
-                try {
-                    config.timeoutSeconds = std::stoi(optarg);
-                    if (config.timeoutSeconds <= 0) {
-                        std::println(std::cerr, "Timeout must be a positive integer.");
-                        return false;
-                    }
-                } catch (const std::exception& e) {
-                    std::println(std::cerr, "Invalid value for timeout: {}", optarg);
-                    return false;
-                }
-                break;
             case 'c':
                 config.configFilePath = optarg;
                 config.loadConfigFile = true;
@@ -264,8 +230,6 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout,
                  "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)");
     std::println(std::cout, "  -s, --silent\t\tSilent mode, suppress output");
-    std::println(std::cout, "  -n, --count <n>\tNumber of ping packets to send (default: 3)");
-    std::println(std::cout, "  -t, --timeout <n>\tTimeout for each ping in seconds (default: 3)");
     std::println(std::cout, "  -c, --config <path>\tLoad configuration from specified file");
     std::println(std::cout, "  -N, --no-config\tDo not load configuration file");
     std::println(std::cout, "  -S, --save-config [path]\tSave current configuration to file");

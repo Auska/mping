@@ -26,8 +26,6 @@ TEST_CASE("ConfigManager default values", "[config]") {
         REQUIRE(config.cleanupDays == -1);
         REQUIRE(config.queryAlerts == -1);
         REQUIRE(config.queryRecoveryRecords == -1);
-        REQUIRE(config.pingCount == 3);
-        REQUIRE(config.timeoutSeconds == 3);
     }
 }
 
@@ -269,98 +267,6 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
     }
 }
 
-TEST_CASE("ConfigManager count option", "[config]") {
-    SECTION("-n option") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
-                        const_cast<char*>("5")};
-        REQUIRE(configManager.parseArguments(3, argv) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.pingCount == 5);
-    }
-
-    SECTION("--count option") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--count"),
-                        const_cast<char*>("10")};
-        REQUIRE(configManager.parseArguments(3, argv) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.pingCount == 10);
-    }
-
-    SECTION("-n option with invalid value (zero)") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
-                        const_cast<char*>("0")};
-        REQUIRE(configManager.parseArguments(3, argv) == false);
-    }
-
-    SECTION("-n option with invalid value (negative)") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
-                        const_cast<char*>("-1")};
-        REQUIRE(configManager.parseArguments(3, argv) == false);
-    }
-
-    SECTION("-n option with invalid value (non-numeric)") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-n"),
-                        const_cast<char*>("abc")};
-        REQUIRE(configManager.parseArguments(3, argv) == false);
-    }
-}
-
-TEST_CASE("ConfigManager timeout option", "[config]") {
-    SECTION("-t option") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
-                        const_cast<char*>("5")};
-        REQUIRE(configManager.parseArguments(3, argv) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.timeoutSeconds == 5);
-    }
-
-    SECTION("--timeout option") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("--timeout"),
-                        const_cast<char*>("10")};
-        REQUIRE(configManager.parseArguments(3, argv) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.timeoutSeconds == 10);
-    }
-
-    SECTION("-t option with invalid value (zero)") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
-                        const_cast<char*>("0")};
-        REQUIRE(configManager.parseArguments(3, argv) == false);
-    }
-
-    SECTION("-t option with invalid value (negative)") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
-                        const_cast<char*>("-1")};
-        REQUIRE(configManager.parseArguments(3, argv) == false);
-    }
-
-    SECTION("-t option with invalid value (non-numeric)") {
-        reset_getopt();
-        ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-t"),
-                        const_cast<char*>("xyz")};
-        REQUIRE(configManager.parseArguments(3, argv) == false);
-    }
-}
-
 TEST_CASE("ConfigManager positional argument", "[config]") {
     SECTION("Positional filename argument") {
         reset_getopt();
@@ -388,16 +294,12 @@ TEST_CASE("ConfigManager multiple options", "[config]") {
         reset_getopt();
         ConfigManager configManager;
         char* argv[] = {const_cast<char*>("mping"),   const_cast<char*>("-d"),
-                        const_cast<char*>("test.db"), const_cast<char*>("-s"),
-                        const_cast<char*>("-n"),      const_cast<char*>("5"),
-                        const_cast<char*>("-t"),      const_cast<char*>("10")};
-        REQUIRE(configManager.parseArguments(8, argv) == true);
+                        const_cast<char*>("test.db"), const_cast<char*>("-s")};
+        REQUIRE(configManager.parseArguments(4, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
         REQUIRE(config.databasePath == "test.db");
         REQUIRE(config.silentMode == true);
-        REQUIRE(config.pingCount == 5);
-        REQUIRE(config.timeoutSeconds == 10);
     }
 
     SECTION("All options combined") {
@@ -405,17 +307,13 @@ TEST_CASE("ConfigManager multiple options", "[config]") {
         ConfigManager configManager;
         char* argv[] = {const_cast<char*>("mping"),      const_cast<char*>("-d"),
                         const_cast<char*>("monitor.db"), const_cast<char*>("-f"),
-                        const_cast<char*>("hosts.txt"),  const_cast<char*>("-s"),
-                        const_cast<char*>("-n"),         const_cast<char*>("3"),
-                        const_cast<char*>("-t"),         const_cast<char*>("5")};
-        REQUIRE(configManager.parseArguments(10, argv) == true);
+                        const_cast<char*>("hosts.txt"),  const_cast<char*>("-s")};
+        REQUIRE(configManager.parseArguments(6, argv) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
         REQUIRE(config.databasePath == "monitor.db");
         REQUIRE(config.filename == "hosts.txt");
         REQUIRE(config.silentMode == true);
-        REQUIRE(config.pingCount == 3);
-        REQUIRE(config.timeoutSeconds == 5);
     }
 }
 

@@ -19,8 +19,6 @@ class ConfigManager {
         int cleanupDays            = -1;  // -1表示不执行清理
         int queryAlerts            = -1;  // -1表示不查询告警，>=0表示查询指定天数内的告警
         int queryRecoveryRecords   = -1;  // -1表示不查询恢复记录，>=0表示查询指定天数内的恢复记录
-        int pingCount              = ConfigDefaults::DEFAULT_PING_COUNT;
-        int timeoutSeconds         = ConfigDefaults::DEFAULT_TIMEOUT;
         bool loadConfigFile        = true;  // 是否加载配置文件
         std::string configFilePath = "";    // 指定的配置文件路径
 #ifdef USE_POSTGRESQL

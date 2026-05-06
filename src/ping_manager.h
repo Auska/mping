@@ -34,8 +34,6 @@ class PingManager {
      * @brief 执行 ping 操作并返回结果
      * 
      * @param hosts 主机列表，格式为 {IP: hostname}
-     * @param pingCount 每个主机发送的 ping 包数量，默认为 3
-     * @param timeoutSeconds 每个 ping 的超时时间（秒），默认为 3
      * @param maxConcurrent 最大并发数，默认为 50
      * 
      * @return std::vector<std::tuple<std::string, std::string, bool, short, std::string>>
@@ -50,7 +48,7 @@ class PingManager {
      * @see pingHost
      */
     std::vector<std::tuple<std::string, std::string, bool, short, std::string>> performPing(
-        const std::map<std::string, std::string>& hosts, int pingCount = 3, int timeoutSeconds = 3,
+        const std::map<std::string, std::string>& hosts,
         size_t maxConcurrent = DEFAULT_MAX_CONCURRENT);
 };
 

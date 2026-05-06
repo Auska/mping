@@ -10,7 +10,7 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
     SECTION("Ping single host") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
 
-        auto results = pingManager.performPing(hosts, 1, 1, 1);
+        auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.size() == 1);
 
         const auto& [ip, hostname, success, delay, timestamp] = results[0];
@@ -24,7 +24,7 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"},
                                                     {"127.0.0.2", "localhost2"}};
 
-        auto results = pingManager.performPing(hosts, 1, 1, 2);
+        auto results = pingManager.performPing(hosts, 2);
         REQUIRE(results.size() == 2);
     }
 
@@ -33,7 +33,7 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
             {"192.0.2.1", "invalid-host"}  // TEST-NET-1, should be unreachable
         };
 
-        auto results = pingManager.performPing(hosts, 1, 1, 1);
+        auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.size() == 1);
 
         const auto& [ip, hostname, success, delay, timestamp] = results[0];
@@ -45,21 +45,21 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
     SECTION("Ping with empty hosts list") {
         std::map<std::string, std::string> hosts;
 
-        auto results = pingManager.performPing(hosts, 1, 1, 1);
+        auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.empty() == true);
     }
 
     SECTION("Ping with multiple count") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
 
-        auto results = pingManager.performPing(hosts, 3, 1, 1);
+        auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.size() == 1);
     }
 
     SECTION("Ping with custom timeout") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
 
-        auto results = pingManager.performPing(hosts, 1, 5, 1);
+        auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.size() == 1);
     }
 }
@@ -72,7 +72,7 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
                                                     {"127.0.0.2", "localhost2"},
                                                     {"127.0.0.3", "localhost3"}};
 
-        auto results = pingManager.performPing(hosts, 1, 1, 10);
+        auto results = pingManager.performPing(hosts, 10);
         REQUIRE(results.size() == 3);
     }
 
@@ -87,12 +87,12 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
 
         std::thread t1([&]() {
             PingManager pm1;
-            results1.push_back(pm1.performPing(hosts1, 1, 1, 1));
+            results1.push_back(pm1.performPing(hosts1, 1));
         });
 
         std::thread t2([&]() {
             PingManager pm2;
-            results2.push_back(pm2.performPing(hosts2, 1, 1, 1));
+            results2.push_back(pm2.performPing(hosts2, 1));
         });
 
         t1.join();
@@ -116,7 +116,7 @@ TEST_CASE("PingManager performance", "[ping][performance]") {
         }
 
         auto start   = std::chrono::high_resolution_clock::now();
-        auto results = pingManager.performPing(hosts, 1, 1, 10);
+        auto results = pingManager.performPing(hosts, 10);
         auto end     = std::chrono::high_resolution_clock::now();
 
         REQUIRE(results.size() == 10);
