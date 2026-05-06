@@ -24,6 +24,11 @@ class PingManager {
     // 默认最大并发数
     static const size_t DEFAULT_MAX_CONCURRENT = ConfigDefaults::MAX_CONCURRENT_PINGS;
 
+    // 统一使用线程池执行ping操作
+    std::vector<std::tuple<std::string, std::string, bool, short, std::string>> performPingInternal(
+        const std::map<std::string, std::string>& hosts, int pingCount, int timeoutSeconds,
+        size_t maxConcurrent);
+
    public:
     /**
      * @brief 执行 ping 操作并返回结果
