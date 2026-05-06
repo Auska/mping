@@ -37,9 +37,7 @@ bool ConfigManager::loadConfigFile() {
 
 void ConfigManager::applyConfigFileSettings() {
     // 从配置文件中读取设置（如果存在）
-    if (configFile.has("general", "database")) {
-        config.enableDatabase = configFile.getBool("general", "database", config.enableDatabase);
-    }
+    // 注意：database 开关仅由 CLI -d 选项控制，配置文件中的 database 设置仅作为 -d 未指定时的默认值
     if (configFile.has("general", "database_path")) {
         config.databasePath = configFile.get("general", "database_path", config.databasePath);
     }

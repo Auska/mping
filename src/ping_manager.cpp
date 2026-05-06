@@ -13,31 +13,62 @@
 #include <stdexcept>
 #include <vector>
 
-// Ping工作函数 - 优化版，使用fork和execvp替代system调用以提高性能
-std::tuple<std::string, std::string, bool, short, std::string> pingHost(const std::string& ip,
-                                                                        const std::string& hostname,
-                                                                        int pingCount,
-                                                                        int timeoutSeconds) {
-    // 发送指定数量的包并记录每次的延迟
+#include "icmplib.h"
+
+namespace {
+
+bool hasRawSocketCapability() {
+#ifdef _WIN32
+    return false;
+#else
+    return geteuid() == 0;
+#endif
+}
+
+std::tuple<std::string, std::string, bool, short, std::string>
+pingHostRaw(const std::string& ip, const std::string& hostname,
+            int pingCount, int timeoutSeconds) {
+    std::vector<short> delays;
+    bool success = false;
+
+    unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
+    icmplib::IPAddress target(ip);
+
+    for (int i = 0; i < pingCount; ++i) {
+        auto result = icmplib::Ping(target, timeoutMs, static_cast<uint16_t>(i + 1));
+        if (result.response == icmplib::PingResult::ResponseType::Success) {
+            success = true;
+        }
+        delays.push_back(static_cast<short>(result.delay));
+    }
+
+    short minDelay = *std::ranges::min_element(delays);
+
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream timestamp;
+    timestamp << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+
+    return std::make_tuple(ip, hostname, success, minDelay, timestamp.str());
+}
+
+std::tuple<std::string, std::string, bool, short, std::string>
+pingHostSystem(const std::string& ip, const std::string& hostname,
+               int pingCount, int timeoutSeconds) {
     std::vector<short> delays;
     bool success = false;
 
     for (int i = 0; i < pingCount; ++i) {
-        // 使用fork和execvp替代system调用，更高效
         pid_t pid = fork();
 
         if (pid == 0) {
-            // 子进程 - 重定向stdout和stderr到/dev/null以实现静默模式
             freopen("/dev/null", "w", stdout);
             freopen("/dev/null", "w", stderr);
 
-            // 执行ping命令
             execlp("ping", "ping", "-c", "1", "-W", std::to_string(timeoutSeconds).c_str(),
                    ip.c_str(), (char*)NULL);
-            // 如果execlp失败，退出子进程
             exit(1);
         } else if (pid > 0) {
-            // 父进程 - 等待子进程完成
             auto start = std::chrono::high_resolution_clock::now();
             int status;
             waitpid(pid, &status, 0);
@@ -45,30 +76,37 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
             auto duration =
                 std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-            // 检查ping命令是否成功
             if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
                 success = true;
             }
 
-            // 记录延迟（即使失败也记录）
             delays.push_back(static_cast<short>(duration));
         } else {
-            // fork失败
             std::cerr << "Failed to fork process for ping: " << ip << std::endl;
-            delays.push_back(static_cast<short>(timeoutSeconds * 1000));  // 超时值作为延迟
+            delays.push_back(static_cast<short>(timeoutSeconds * 1000));
         }
     }
 
-    // 取所有延迟中的最小值
     short minDelay = *std::ranges::min_element(delays);
 
-    // 获取当前时间戳（使用UTC时间）
-    auto now    = std::chrono::system_clock::now();
+    auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream timestamp;
     timestamp << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
 
     return std::make_tuple(ip, hostname, success, minDelay, timestamp.str());
+}
+
+}  // namespace
+
+std::tuple<std::string, std::string, bool, short, std::string> pingHost(const std::string& ip,
+                                                                        const std::string& hostname,
+                                                                        int pingCount,
+                                                                        int timeoutSeconds) {
+    if (hasRawSocketCapability()) {
+        return pingHostRaw(ip, hostname, pingCount, timeoutSeconds);
+    }
+    return pingHostSystem(ip, hostname, pingCount, timeoutSeconds);
 }
 
 std::vector<std::tuple<std::string, std::string, bool, short, std::string>>

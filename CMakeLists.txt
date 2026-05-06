@@ -87,7 +87,7 @@ if(BUILD_TESTS)
     )
     
     target_link_libraries(mping_tests PRIVATE Catch2::Catch2WithMain)
-    target_include_directories(mping_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR})
+    target_include_directories(mping_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR})
     
     # Add compile definitions for version information
     target_compile_definitions(mping_tests PRIVATE 
@@ -138,7 +138,7 @@ if(BUILD_TESTS)
 endif()
 
 # Include the directory where project_info.h is generated
-target_include_directories(mping PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(mping PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
 
 # Add compile definitions for version information
 target_compile_definitions(mping PRIVATE 
