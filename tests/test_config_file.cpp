@@ -237,4 +237,188 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
         std::filesystem::remove(testPath);
     }
+
+    SECTION("Parse with semicolon comments") {
+        std::string testPath = "/tmp/test_config_XXXXXX.conf";
+        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        REQUIRE(fd >= 0);
+        close(fd);
+
+        std::ofstream file(testPath);
+        file << "; This is a semicolon comment\n";
+        file << "[general]\n";
+        file << "key = value\n";
+        file.close();
+
+        ConfigFile config;
+        REQUIRE(config.load(testPath) == true);
+        REQUIRE(config.get("general", "key") == "value");
+
+        std::filesystem::remove(testPath);
+    }
+
+    SECTION("Parse with whitespace around values") {
+        std::string testPath = "/tmp/test_config_XXXXXX.conf";
+        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        REQUIRE(fd >= 0);
+        close(fd);
+
+        std::ofstream file(testPath);
+        file << "  [general]  \n";
+        file << "  key = value  \n";
+        file.close();
+
+        ConfigFile config;
+        REQUIRE(config.load(testPath) == true);
+        REQUIRE(config.get("general", "key") == "value");
+
+        std::filesystem::remove(testPath);
+    }
+
+    SECTION("Empty file") {
+        std::string testPath = "/tmp/test_config_XXXXXX.conf";
+        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        REQUIRE(fd >= 0);
+        close(fd);
+
+        std::ofstream file(testPath);
+        file.close();
+
+        ConfigFile config;
+        REQUIRE(config.load(testPath) == true);
+        REQUIRE(config.getSections().empty());
+
+        std::filesystem::remove(testPath);
+    }
+
+    SECTION("File not found") {
+        ConfigFile config;
+        REQUIRE(config.load("/tmp/nonexistent_file.conf") == false);
+        REQUIRE(config.isLoaded() == false);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ConfigFile 原子写入测试
+// ══════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("ConfigFile atomic write — .tmp file cleanup", "[config_file][atomic]") {
+    std::string testPath = "/tmp/test_atomic_XXXXXX.conf";
+    int fd = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    ConfigFile config;
+    config.set("section", "key", "value");
+    REQUIRE(config.save(testPath));
+
+    SECTION("Main file exists") {
+        REQUIRE(std::filesystem::exists(testPath));
+    }
+
+    SECTION("Temp file is cleaned up") {
+        std::string tmpPath = testPath + ".tmp";
+        REQUIRE(std::filesystem::exists(tmpPath) == false);
+    }
+
+    SECTION("File content is correct") {
+        std::ifstream file(testPath);
+        REQUIRE(file.is_open());
+        std::string content((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+
+        // Should contain section header and key=value
+        REQUIRE(content.find("[section]") != std::string::npos);
+        REQUIRE(content.find("key") != std::string::npos);
+        REQUIRE(content.find("value") != std::string::npos);
+        // Should NOT contain ".tmp" in content
+        REQUIRE(content.find(".tmp") == std::string::npos);
+    }
+
+    std::filesystem::remove(testPath);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ConfigFile 保存/加载双向验证
+// ══════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("ConfigFile save/load roundtrip preserves all values", "[config_file][roundtrip]") {
+    std::string testPath = "/tmp/test_roundtrip_XXXXXX.conf";
+    int fd = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    SECTION("Single section") {
+        ConfigFile config;
+        config.set("general", "database", "true");
+        config.setInt("general", "timeout", 30);
+        config.setBool("general", "silent", true);
+        REQUIRE(config.save(testPath));
+
+        ConfigFile loaded;
+        REQUIRE(loaded.load(testPath));
+        REQUIRE(loaded.getBool("general", "database") == true);
+        REQUIRE(loaded.getInt("general", "timeout") == 30);
+        REQUIRE(loaded.getBool("general", "silent") == true);
+    }
+
+    SECTION("Multiple sections") {
+        ConfigFile config;
+        config.set("general", "ping_count", "5");
+        config.set("database", "path", "/tmp/db");
+        config.set("alerts", "enabled", "true");
+        config.set("alerts", "days", "7");
+        REQUIRE(config.save(testPath));
+
+        ConfigFile loaded;
+        REQUIRE(loaded.load(testPath));
+        REQUIRE(loaded.getInt("general", "ping_count") == 5);
+        REQUIRE(loaded.get("database", "path") == "/tmp/db");
+        REQUIRE(loaded.getBool("alerts", "enabled") == true);
+        REQUIRE(loaded.getInt("alerts", "days") == 7);
+    }
+
+    SECTION("Roundtrip preserves all keys") {
+        ConfigFile config;
+        config.set("a", "k1", "v1");
+        config.set("a", "k2", "v2");
+        config.set("b", "k3", "v3");
+        REQUIRE(config.save(testPath));
+
+        ConfigFile loaded;
+        REQUIRE(loaded.load(testPath));
+        auto sections = loaded.getSections();
+        REQUIRE(sections.size() == 2);
+        auto keysA = loaded.getKeys("a");
+        REQUIRE(keysA.size() == 2);
+        auto keysB = loaded.getKeys("b");
+        REQUIRE(keysB.size() == 1);
+    }
+
+    std::filesystem::remove(testPath);
+}
+
+TEST_CASE("ConfigFile save preserves original path", "[config_file][save]") {
+    std::string testPath = "/tmp/test_origpath_XXXXXX.conf";
+    int fd = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    ConfigFile config;
+    config.set("section", "key", "value");
+    REQUIRE(config.save(testPath));
+    REQUIRE(config.getFilePath() == testPath);
+
+    // save() without args should use the original path
+    config.set("section", "key2", "value2");
+    REQUIRE(config.save());
+    REQUIRE(std::filesystem::exists(testPath));
+
+    // Reload and verify
+    ConfigFile loaded;
+    REQUIRE(loaded.load(testPath));
+    REQUIRE(loaded.get("section", "key") == "value");
+    REQUIRE(loaded.get("section", "key2") == "value2");
+
+    std::filesystem::remove(testPath);
 }

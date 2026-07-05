@@ -53,10 +53,10 @@ endif()
 
 # Add executable - include only the necessary database manager
 if(USE_POSTGRESQL)
-    add_executable(mping src/main.cpp src/database_manager_pg.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/config_file.cpp src/utils.cpp src/version_info.cpp)
+    add_executable(mping src/main.cpp src/commands.cpp src/database_manager_pg.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/config_file.cpp src/utils.cpp src/version_info.cpp)
     target_compile_definitions(mping PRIVATE USE_POSTGRESQL=1)
 else()
-    add_executable(mping src/main.cpp src/database_manager.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/config_file.cpp src/utils.cpp src/version_info.cpp)
+    add_executable(mping src/main.cpp src/commands.cpp src/database_manager.cpp src/database_factory.cpp src/ping_manager.cpp src/config_manager.cpp src/config_file.cpp src/utils.cpp src/version_info.cpp)
     target_compile_definitions(mping PRIVATE USE_SQLITE=1)
 endif()
 
@@ -78,6 +78,7 @@ if(BUILD_TESTS)
     # Add test executable with Catch2
     add_executable(mping_tests
         tests/test_main.cpp
+        tests/test_commands.cpp
         tests/test_database_manager.cpp
         tests/test_ping_manager.cpp
         tests/test_utils.cpp
@@ -104,6 +105,7 @@ if(BUILD_TESTS)
     if(NOT USE_POSTGRESQL)
         find_package(SQLite3 REQUIRED)
         target_sources(mping_tests PRIVATE
+            src/commands.cpp
             src/database_manager.cpp
             src/database_factory.cpp
             src/ping_manager.cpp
@@ -117,6 +119,7 @@ if(BUILD_TESTS)
         # When PostgreSQL is enabled, include both database managers for testing
         find_package(SQLite3 REQUIRED)
         target_sources(mping_tests PRIVATE
+            src/commands.cpp
             src/database_manager.cpp
             src/database_manager_pg.cpp
             src/database_factory.cpp
@@ -139,18 +142,6 @@ endif()
 
 # Include the directory where project_info.h is generated
 target_include_directories(mping PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
-
-# Add compile definitions for version information
-target_compile_definitions(mping PRIVATE 
-    PROJECT_NAME="${PROJECT_NAME}"
-    PROJECT_VERSION="${PROJECT_VERSION}"
-    PROJECT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-    PROJECT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-    PROJECT_VERSION_PATCH=${PROJECT_VERSION_PATCH}
-    PROJECT_DESCRIPTION="${PROJECT_DESCRIPTION}"
-    PROJECT_HOMEPAGE_URL="${PROJECT_HOMEPAGE_URL}"
-    COMPILE_TIME="${COMPILE_TIME}"
-)
 
 # Add compile definitions for version information
 target_compile_definitions(mping PRIVATE 

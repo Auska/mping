@@ -6,10 +6,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <print>
 #include <ranges>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 
@@ -23,6 +26,14 @@ bool hasRawSocketCapability() {
 #else
     return geteuid() == 0;
 #endif
+}
+
+std::string getCurrentTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    return ss.str();
 }
 
 std::tuple<std::string, std::string, bool, short, std::string>
@@ -43,58 +54,57 @@ pingHostRaw(const std::string& ip, const std::string& hostname,
     }
 
     short minDelay = *std::ranges::min_element(delays);
-
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream timestamp;
-    timestamp << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-
-    return std::make_tuple(ip, hostname, success, minDelay, timestamp.str());
+    return std::make_tuple(ip, hostname, success, minDelay, getCurrentTimestamp());
 }
 
+// 使用系统 ping 命令，一次 fork 完成所有包探测
+// 通过解析 ping 输出获取最小延迟
 std::tuple<std::string, std::string, bool, short, std::string>
 pingHostSystem(const std::string& ip, const std::string& hostname,
                int pingCount, int timeoutSeconds) {
-    std::vector<short> delays;
-    bool success = false;
+    // 构建命令：ping -c N -W timeout ip，stderr 重定向到 /dev/null
+    std::string cmd = "ping -c " + std::to_string(pingCount)
+                    + " -W " + std::to_string(timeoutSeconds)
+                    + " " + ip + " 2>/dev/null";
 
-    for (int i = 0; i < pingCount; ++i) {
-        pid_t pid = fork();
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        return std::make_tuple(ip, hostname, false,
+                               static_cast<short>(timeoutSeconds * 1000),
+                               getCurrentTimestamp());
+    }
 
-        if (pid == 0) {
-            freopen("/dev/null", "w", stdout);
-            freopen("/dev/null", "w", stderr);
+    std::string output;
+    char buf[256];
+    while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+        output += buf;
+    }
 
-            execlp("ping", "ping", "-c", "1", "-W", std::to_string(timeoutSeconds).c_str(),
-                   ip.c_str(), (char*)NULL);
-            exit(1);
-        } else if (pid > 0) {
-            auto start = std::chrono::high_resolution_clock::now();
-            int status;
-            waitpid(pid, &status, 0);
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration =
-                std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    int rawStatus = pclose(pipe);
+    bool success = (rawStatus != -1 && WIFEXITED(rawStatus) && WEXITSTATUS(rawStatus) == 0);
+    short delay = static_cast<short>(timeoutSeconds * 1000);
 
-            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                success = true;
+    if (success) {
+        // 解析 rtt 行获取最小延迟
+        // "rtt min/avg/max/mdev = 12.345/67.890/12.345/1.234 ms"
+        auto pos = output.rfind("rtt min/avg/max/mdev");
+        if (pos != std::string::npos) {
+            auto eq = output.find('=', pos);
+            if (eq != std::string::npos) {
+                auto slash = output.find('/', eq + 1);
+                if (slash != std::string::npos) {
+                    size_t start  = eq + 2; // 跳过 "= "
+                    std::string minStr = output.substr(start, slash - start);
+                    try {
+                        double ms = std::stod(minStr);
+                        delay = static_cast<short>(std::round(ms));
+                    } catch (...) {}
+                }
             }
-
-            delays.push_back(static_cast<short>(duration));
-        } else {
-            std::cerr << "Failed to fork process for ping: " << ip << std::endl;
-            delays.push_back(static_cast<short>(timeoutSeconds * 1000));
         }
     }
 
-    short minDelay = *std::ranges::min_element(delays);
-
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream timestamp;
-    timestamp << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-
-    return std::make_tuple(ip, hostname, success, minDelay, timestamp.str());
+    return std::make_tuple(ip, hostname, success, delay, getCurrentTimestamp());
 }
 
 }  // namespace

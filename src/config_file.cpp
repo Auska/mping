@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <sstream>
 
 ConfigFile::ConfigFile() : loaded(false) {
@@ -106,7 +107,9 @@ bool ConfigFile::save(const std::string& path) {
         }
     }
 
-    std::ofstream file(path);
+    // 原子写入：先写临时文件，再 rename
+    std::string tmpPath = path + ".tmp";
+    std::ofstream file(tmpPath);
     if (!file.is_open()) {
         return false;
     }
@@ -114,6 +117,12 @@ bool ConfigFile::save(const std::string& path) {
     file << "# mping configuration file" << std::endl;
     file << "# Generated automatically" << std::endl;
     file << std::endl;
+
+    // 构建 O(log n) 查找表
+    std::set<std::pair<std::string, std::string>> seenKeys;
+    for (const auto& entry : originalEntries) {
+        seenKeys.insert({entry.section, entry.key});
+    }
 
     // 保存原始条目（保留注释和顺序）
     std::string lastSection;
@@ -132,33 +141,37 @@ bool ConfigFile::save(const std::string& path) {
     for (const auto& [section, keyMap] : configData) {
         bool sectionWritten = false;
         for (const auto& [key, value] : keyMap) {
-            // 检查是否已经在 originalEntries 中
-            bool found = false;
-            for (const auto& entry : originalEntries) {
-                if (entry.section == section && entry.key == key) {
-                    found = true;
-                    break;
-                }
+            // O(log n) 查找 vs 原来的 O(n)
+            if (seenKeys.count({section, key})) {
+                continue;
             }
 
-            if (!found) {
-                if (!sectionWritten) {
-                    if (section != lastSection) {
-                        if (!lastSection.empty()) {
-                            file << std::endl;
-                        }
-                        file << "[" << section << "]" << std::endl;
-                        lastSection = section;
+            if (!sectionWritten) {
+                if (section != lastSection) {
+                    if (!lastSection.empty()) {
+                        file << std::endl;
                     }
-                    sectionWritten = true;
+                    file << "[" << section << "]" << std::endl;
+                    lastSection = section;
                 }
-                file << key << " = \"" << value << "\"" << std::endl;
+                sectionWritten = true;
             }
+            file << key << " = \"" << value << "\"" << std::endl;
         }
     }
 
     file.close();
-    filePath = path;
+
+    // 原子替换（POSIX 保证：同文件系统内 rename 是原子的）
+    std::error_code ec;
+    std::filesystem::rename(tmpPath, path, ec);
+    if (ec) {
+        std::cerr << "Failed to atomically replace config file: " << ec.message() << std::endl;
+        std::filesystem::remove(tmpPath, ec);
+        return false;
+    }
+
+    this->filePath = path;
     return true;
 }
 

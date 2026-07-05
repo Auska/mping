@@ -16,17 +16,6 @@ class DatabaseBase {
         return IPValidator::isValidIPv4(ip);
     }
 
-    // 验证IP地址列表
-    template <typename T>
-    bool validateIPs(const T& results) const {
-        for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-            if (!isValidIP(ip)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     DatabaseBase()          = default;
     virtual ~DatabaseBase() = default;
 

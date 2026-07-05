@@ -39,7 +39,13 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 
 ## 架构设计
 - **模块化设计**：分离关注点，各模块职责明确
-- **`main.cpp`**：命令行界面和参数解析
+- **命令模式**：`commands.h`/`commands.cpp` 定义了 Command 抽象基类和 5 个子命令
+  - `QueryIPCommand`：查询 IP 统计
+  - `CleanupCommand`：清理旧数据
+  - `QueryAlertsCommand`：查询告警
+  - `QueryRecoveryCommand`：查询恢复记录
+  - `PingCommand`：执行 Ping 并存储结果
+- **`main.cpp`**：精简至 ~50 行，仅负责参数解析和命令调度
 - **`utils.cpp`/`utils.h`**：文件操作等实用函数
 - **`ping_manager.cpp`/`ping_manager.h`**：核心 ping 功能实现（线程池优化）
 - **`database_manager.cpp`/`database_manager.h`**：SQLite 数据库操作
@@ -57,14 +63,26 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 解析命令行参数（ConfigManager）
   → 加载配置文件（ConfigFile，XDG 规范搜索路径）
   → 命令行选项覆盖配置文件设置
-  → 创建数据库实例（DatabaseFactory，根据连接字符串自动检测类型）
-  → 初始化数据库（创建表结构）
-  → 读取主机列表（utils::readHostsFromFile）
-  → 执行并发 ping（PingManager，线程池，最大并发数 50）
-  → 批量写入结果到数据库
-  → 处理告警和恢复记录
-  → 输出结果
+  ┌── [queryIP 非空] → 创建 QueryIPCommand → 查询统计 → 结束
+  ├── [cleanupDays >= 0] → 创建 CleanupCommand → 清理数据 → 结束
+  ├── [queryAlerts 启用] → 创建 QueryAlertsCommand → 查询告警 → 结束
+  ├── [queryRecoveryRecords 启用] → 创建 QueryRecoveryCommand → 查询恢复 → 结束
+  └── [默认] → 创建 PingCommand
+       → 确定数据库类型（DatabaseFactory，根据连接字符串自动检测）
+       → 初始化数据库（创建表结构）
+       → 读取主机列表（文件或数据库 hosts 表）
+       → 执行并发 ping（PingManager，线程池，最大并发数 50）
+       → 批量写入结果到数据库
+       → 处理告警（带状态检测，只写入状态变化）
+       → 清理过期 ping 记录
+       → 输出结果
 ```
+
+### 命令模式优势
+- **降低耦合**：每种操作模式封装为独立命令类
+- **简化测试**：命令类可以独立测试
+- **降低复杂度**：`main()` 圈复杂度从 30 降至 5
+- **易于扩展**：添加新命令只需继承 `Command` 并实现 `execute()`
 
 ### 数据库抽象层
 
@@ -148,6 +166,8 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - **编译选项**：
   - `-DUSE_POSTGRESQL=ON`：启用 PostgreSQL 支持
   - `-DBUILD_TESTS=ON`：编译测试程序
+  - `-DENABLE_SANITIZERS=ON`：启用 AddressSanitizer 和 UndefinedBehaviorSanitizer
+  - `-DENABLE_COVERAGE=ON`：启用代码覆盖率
 - **安装支持**：支持通过 `make install` 安装到系统
 
 ### 构建命令
@@ -211,8 +231,6 @@ brew install cmake sqlite postgresql pkg-config
 - `-r`, `--recovery [n]`: 查询恢复记录（需要 -d，n: 天数，默认：全部）
 - `-C`, `--cleanup [n]`: 清理 n 天前的数据（需要 -d，默认：30 天）
 - `-s`, `--silent`: 静默模式，抑制输出
-- `-n`, `--count <n>`: 每个主机发送的 ping 包数量（默认：3）
-- `-t`, `--timeout <n>`: 每个 ping 的超时时间（秒，默认：3）
 - `-c`, `--config <path>`: 从指定路径加载配置文件
 - `-N`, `--no-config`: 不加载配置文件
 - `-S`, `--save-config [path]`: 保存当前配置到文件（默认：XDG 配置目录）
@@ -251,12 +269,6 @@ database_path = "/path/to/database.db"
 # 静默模式
 silent = false
 
-# 每个主机发送的 ping 包数量
-ping_count = 3
-
-# 每个 ping 的超时时间（秒）
-timeout = 3
-
 # 清理 n 天前的数据
 cleanup_days = 30
 ```
@@ -293,12 +305,15 @@ mping -S /path/to/config.conf
 
 ### 测试文件
 - **`tests/test_main.cpp`**：测试入口，定义 `CATCH_CONFIG_MAIN`
-- **`tests/test_database_manager.cpp`**：数据库管理器功能测试
+- **`tests/test_commands.cpp`**：命令模式测试（所有 5 个命令）
+- **`tests/test_database_manager.cpp`**：数据库管理器功能测试（含告警生命周期、并发访问）
 - **`tests/test_ping_manager.cpp`**：Ping 管理器功能测试
 - **`tests/test_utils.cpp`**：工具函数测试
-- **`tests/test_config_manager.cpp`**：配置管理器测试
+- **`tests/test_config_manager.cpp`**：配置管理器测试（13 个测试用例）
 - **`tests/test_version_info.cpp`**：版本信息测试
-- **`tests/test_config_file.cpp`**：配置文件解析器测试
+- **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
+
+当前共 **55 个测试用例**，**506 个断言**。
 
 > **注意**：启用 PostgreSQL 时，测试程序会同时链接 SQLite 和 PostgreSQL 数据库管理器，以便进行跨数据库测试。
 

@@ -7,6 +7,7 @@
 #endif
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "database_base.h"
 #include "database_factory.h"
@@ -520,4 +521,140 @@ TEST_CASE("DatabaseFactory", "[database][factory]") {
                 == DatabaseType::SQLITE);
         REQUIRE(DatabaseFactory::detectDatabaseType("/path/to/port.db") == DatabaseType::SQLITE);
     }
+}
+// ══════════════════════════════════════════════════════════════════════════
+//  告警 → 恢复记录 完整生命周期
+// ══════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("DatabaseManager alert lifecycle integration", "[database][sqlite][integration]") {
+    std::string testDb = "/tmp/test_lifecycle_XXXXXX.db";
+    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    DatabaseManager db(testDb);
+    REQUIRE(db.initialize());
+
+    SECTION("Full lifecycle: add, verify, remove, verify recovery") {
+        REQUIRE(db.addAlert("10.0.0.1", "router1"));
+        auto alerts1 = db.getActiveAlerts();
+        REQUIRE(alerts1.size() == 1);
+
+        REQUIRE(db.removeAlert("10.0.0.1"));
+        REQUIRE(db.getActiveAlerts().empty());
+
+        auto records = db.getRecoveryRecords();
+        REQUIRE(records.size() == 1);
+        const auto& [id, ip, hostname, alertTime, recoveryTime] = records[0];
+        REQUIRE(ip == "10.0.0.1");
+        REQUIRE(hostname == "router1");
+        REQUIRE(alertTime.empty() == false);
+        REQUIRE(recoveryTime.empty() == false);
+    }
+
+    SECTION("Multiple alerts with mixed resolutions") {
+        REQUIRE(db.addAlert("10.0.0.1", "host1"));
+        REQUIRE(db.addAlert("10.0.0.2", "host2"));
+        REQUIRE(db.getActiveAlerts().size() == 2);
+        db.removeAlert("10.0.0.1");
+        REQUIRE(db.getActiveAlerts().size() == 1);
+        REQUIRE(db.getRecoveryRecords().size() == 1);
+    }
+
+    SECTION("Removing non-existent alert does not create recovery record") {
+        db.removeAlert("10.0.0.99");
+        REQUIRE(db.getRecoveryRecords().empty());
+    }
+
+    std::filesystem::remove(testDb);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  cleanupOldPingResults
+// ══════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("DatabaseManager cleanupOldPingResults", "[database][sqlite]") {
+    std::string testDb = "/tmp/test_cleanuppr_XXXXXX.db";
+    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    DatabaseManager db(testDb);
+    REQUIRE(db.initialize());
+
+    SECTION("Cleanup with no data") {
+        REQUIRE_NOTHROW(db.cleanupOldPingResults(30));
+    }
+
+    SECTION("Cleanup old ping results keeps hosts and alerts") {
+        db.insertPingResult("192.168.1.1", "host1", 10, true, "2024-01-01 00:00:00");
+        db.addAlert("10.0.0.1", "router1");
+        db.cleanupOldPingResults(1);
+        REQUIRE(db.getAllHosts().size() == 1);
+        REQUIRE(db.getActiveAlerts().size() == 1);
+    }
+
+    std::filesystem::remove(testDb);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  并发数据库访问
+// ══════════════════════════════════════════════════════════════════════════
+
+TEST_CASE("DatabaseManager concurrent access", "[database][sqlite][concurrent]") {
+    std::string testDb = "/tmp/test_concurrent_XXXXXX.db";
+    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    SECTION("Concurrent insertions from multiple threads") {
+        DatabaseManager db(testDb);
+        REQUIRE(db.initialize());
+
+        std::vector<std::thread> threads;
+        constexpr int THREAD_COUNT = 4;
+        constexpr int INSERTS_PER_THREAD = 100;
+
+        for (int t = 0; t < THREAD_COUNT; ++t) {
+            threads.emplace_back([&db, t]() {
+                for (int i = 0; i < INSERTS_PER_THREAD; ++i) {
+                    std::string ip = "10.0." + std::to_string(t) + "." + std::to_string(i);
+                    db.insertPingResult(ip, "host", i, true, "2025-01-01 00:00:00");
+                }
+            });
+        }
+
+        for (auto& th : threads) {
+            th.join();
+        }
+
+        REQUIRE(db.getAllHosts().size() >= THREAD_COUNT * INSERTS_PER_THREAD * 3 / 4);
+    }
+
+    SECTION("Concurrent alert operations") {
+        DatabaseManager db(testDb);
+        REQUIRE(db.initialize());
+
+        constexpr int THREAD_COUNT = 4;
+        std::vector<std::thread> threads;
+
+        for (int t = 0; t < THREAD_COUNT; ++t) {
+            threads.emplace_back([&db, t]() {
+                std::string ip = "192.168." + std::to_string(t) + "." + std::to_string(t);
+                db.addAlert(ip, "host");
+                db.getActiveAlerts();
+                db.removeAlert(ip);
+                db.getRecoveryRecords();
+            });
+        }
+
+        for (auto& th : threads) {
+            th.join();
+        }
+
+        REQUIRE(db.getActiveAlerts().empty());
+        REQUIRE(db.getRecoveryRecords().size() == THREAD_COUNT);
+    }
+
+    std::filesystem::remove(testDb);
 }

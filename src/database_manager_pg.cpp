@@ -431,7 +431,13 @@ bool DatabaseManagerPG::insertPingResults(
 
     // 验证所有IP地址格式
     if (success) {
-        success = DatabaseBase::validateIPs(results);
+        for (const auto& [ip, _, __, ___, ____] : results) {
+            if (!isValidIP(ip)) {
+                std::println(std::cerr, "Invalid IP address format: {}", ip);
+                success = false;
+                break;
+            }
+        }
     }
 
     // 为所有IP地址创建表（如果尚未创建）

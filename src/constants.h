@@ -15,6 +15,14 @@ struct ConfigDefaults {
     static constexpr int DEFAULT_TIMEOUT       = 3;   // 默认超时时间（秒）
     static constexpr int FIRST_ROUND_TIMEOUT   = 1;   // 第一轮超时时间（秒）
     static constexpr int RETRY_ROUND_TIMEOUT   = 3;   // 第二轮重试超时时间（秒）
+
+    // 文件名默认值
+    static constexpr const char* DEFAULT_FILENAME = "ip.txt";
+    // ping 结果默认保留天数
+    static constexpr int DEFAULT_PING_RESULTS_CLEANUP_DAYS = 30;
+
+    // 查询模式的特殊标记
+    static constexpr int QUERY_MODE_ENABLED_NO_DAYS = -2;  // 已启用但未指定天数
 };
 
 #endif  // CONSTANTS_H
