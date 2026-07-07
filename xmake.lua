@@ -2,10 +2,9 @@ add_rules("mode.debug", "mode.release")
 
 set_languages("c++23")
 set_warnings("all", "extra", "pedantic")
-
-add_requires("sqlite3")
-add_requires("libpq")
-add_requires("catch2")
+add_requires("sqlite3", {configs = {shared = false}, system = false})
+add_requires("libpq", {configs = {shared = false}, system = false})
+add_requires("catch2", {configs = {shared = false}, system = false})
 
 option("use_postgresql")
     set_default(false)
