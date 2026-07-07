@@ -12,6 +12,9 @@ xmake f --use_postgresql=y && xmake
 # 构建（含测试）
 xmake f --build_tests=y && xmake
 
+# 构建（含测试 + PostgreSQL）
+xmake f --build_tests=y --use_postgresql=y && xmake
+
 # 运行全部测试
 xmake run mping_tests
 
@@ -26,6 +29,11 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 
 # 安装到系统（需 root）
 sudo xmake install
+clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
+
+# 检查格式化（逐文件对比）
+for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
+
 ```
 
 ## 项目概述
@@ -97,7 +105,7 @@ DatabaseManager        DatabaseManagerPG
 
 ### 条件编译
 
-代码中使用 `#ifdef USE_POSTGRESQL` / `#ifdef USE_SQLITE` 宏进行条件编译。添加新数据库支持时需要修改：
+代码中使用 `#ifdef USE_POSTGRESQL` / `#ifdef USE_SQLITE` 宏进行条件编译。两个宏**独立检测**，可同时定义（测试目标）以支持两种后端。添加新数据库支持时需要修改：
 - `database_factory.cpp`：添加新的 `DatabaseType` 枚举值和创建逻辑
 - `xmake.lua`：添加编译选项、依赖查找和源文件
 
@@ -136,6 +144,15 @@ clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
 for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
 ```
 
+### xmake.lua 规范
+遵循 xmake-style 规范：
+- **声明式配置**：`target()` / `option()` 内部仅使用 `set_` / `add_` 声明式调用，复杂逻辑放到 `on_load` 或独立脚本
+- **`add_requires` 集中到文件顶部**：所有依赖包在 root scope 统一声明，不分散到 target 内部
+- **`_end()` 按需使用**：`target_end()` / `option_end()` 不需要显式调用（除非条件 target 导致嵌套），xmake 通过下一个顶层调用自动闭合
+- **缩进 4 空格**：无 Tab
+- **依赖通过 xrepo 管理**：使用 `add_packages("sqlite3")` 而非 `add_syslinks("sqlite3")`，路径和标志由 xrepo 自动处理
+- **平台条件使用 `is_plat`**：避免手动检测 `os.host()`
+
 ## 项目特性
 - 并发 ping 多个主机以获得更快的结果（默认最大并发数 50）
 - 从文件读取 IP 地址和主机名
@@ -159,6 +176,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 ## 构建系统
 - **Xmake**：使用 Xmake 作为构建系统
 - **C++23 标准**（必需）
+- **依赖管理**：通过 xrepo（Xmake 内置包管理器）自动下载，无需手动安装系统开发库
 - **支持构建类型**：Release（默认）和 Debug
 - **编译选项**：
   - `--use_postgresql=y`：启用 PostgreSQL 支持
@@ -187,23 +205,19 @@ sudo xmake install
 - **并行编译**：Xmake 自动使用多核编译
 
 ## 依赖项
-- **CMake 3.10 或更高版本**
 - **C++23 兼容编译器**（GCC 13+、Clang 16+ 或 MSVC 2022+）
-- **SQLite3 开发库**（必需）
-- **PostgreSQL 开发库**（可选，用于 PostgreSQL 支持）
-- **线程库**（pthread，用于并发处理）
-- **pkg-config**（可选，用于 PostgreSQL 支持）
+- **Xmake**（内置 xrepo 包管理器，自动处理所有 C/C++ 依赖）
+- **线程库**（pthread，系统内置）
 
-### 系统依赖安装
-```bash
-# Debian/Ubuntu
-sudo apt-get install build-essential libsqlite3-dev libpq-dev pkg-config
+所有第三方依赖（SQLite3、libpq、Catch2）均由 xrepo 在构建时自动下载和编译，**无需手动安装系统开发库**。xmake.lua 中使用 `add_requires` 声明依赖，`add_packages` 在目标中引用：
 
-# Fedora/RHEL
-sudo dnf install gcc-c++ sqlite-devel postgresql-devel pkg-config
+```lua
+add_requires("sqlite3")
+add_requires("libpq")
+add_requires("catch2")
 
-# macOS
-brew install sqlite postgresql pkg-config
+target("mping")
+    add_packages("sqlite3")  -- 或 add_packages("libpq")
 ```
 
 ## 命令行选项
@@ -298,9 +312,9 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **55 个测试用例**，**506 个断言**。
+当前共 **55 个测试用例**，**511 个断言**。
 
-> **注意**：启用 PostgreSQL 时，测试程序会同时链接 SQLite 和 PostgreSQL 数据库管理器，以便进行跨数据库测试。
+> **注意**：启用 PostgreSQL 时，测试程序会同时链接 SQLite 和 PostgreSQL 数据库管理器，以便进行跨数据库测试。`database_factory.cpp` 使用独立检测的 `USE_SQLITE` / `USE_POSTGRESQL` 宏，两个后端可同时编译。
 
 ### 运行测试
 ```bash

@@ -1,22 +1,25 @@
 #include "database_factory.h"
 #ifdef USE_POSTGRESQL
 #include "database_manager_pg.h"
-#else
+#endif
+#ifdef USE_SQLITE
 #include "database_manager.h"
 #endif
 #include <memory>
 
 std::unique_ptr<DatabaseInterface> DatabaseFactory::createDatabase(
     [[maybe_unused]] DatabaseType type, const std::string& connectionInfo) {
-#ifdef USE_POSTGRESQL
     if (type == DatabaseType::POSTGRESQL) {
+#ifdef USE_POSTGRESQL
         return std::make_unique<DatabaseManagerPG>(connectionInfo);
-    }
-    // 如果启用了PostgreSQL但请求SQLite类型，返回nullptr
-    return nullptr;
 #else
-    // 如果禁用了PostgreSQL，只支持SQLite
+        return nullptr;
+#endif
+    }
+#ifdef USE_SQLITE
     return std::make_unique<DatabaseManager>(connectionInfo);
+#else
+    return nullptr;
 #endif
 }
 

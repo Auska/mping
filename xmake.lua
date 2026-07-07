@@ -3,6 +3,10 @@ add_rules("mode.debug", "mode.release")
 set_languages("c++23")
 set_warnings("all", "extra", "pedantic")
 
+add_requires("sqlite3")
+add_requires("libpq")
+add_requires("catch2")
+
 option("use_postgresql")
     set_default(false)
     set_showmenu(true)
@@ -36,7 +40,6 @@ local common_defines = {
 
 target("mping")
     set_kind("binary")
-
     add_includedirs("src", "include")
     add_files("src/main.cpp")
     add_files(common_sources)
@@ -45,11 +48,11 @@ target("mping")
     if has_config("use_postgresql") then
         add_files("src/database_manager_pg.cpp")
         add_defines("USE_POSTGRESQL=1")
-        add_syslinks("pq")
+        add_packages("libpq")
     else
         add_files("src/database_manager.cpp")
         add_defines("USE_SQLITE=1")
-        add_syslinks("sqlite3")
+        add_packages("sqlite3")
     end
 
     if is_plat("linux") then
@@ -59,16 +62,12 @@ target("mping")
 target_end()
 
 if has_config("build_tests") then
-    add_requires("catch2")
-
     target("mping_tests")
         set_kind("binary")
-
         add_includedirs("src", "include")
         add_packages("catch2")
         add_files(common_sources)
         add_defines(common_defines)
-
         add_files(
             "tests/test_main.cpp",
             "tests/test_commands.cpp",
@@ -81,17 +80,16 @@ if has_config("build_tests") then
         )
 
         if has_config("use_postgresql") then
-            add_files("src/database_manager_pg.cpp")
-            add_defines("USE_POSTGRESQL=1")
-            add_syslinks("pq")
+            add_files("src/database_manager_pg.cpp", "src/database_manager.cpp")
+            add_defines("USE_POSTGRESQL=1", "USE_SQLITE=1")
+            add_packages("libpq", "sqlite3")
         else
             add_files("src/database_manager.cpp")
             add_defines("USE_SQLITE=1")
-            add_syslinks("sqlite3")
+            add_packages("sqlite3")
         end
 
         if is_plat("linux") then
             add_syslinks("pthread")
         end
-    target_end()
 end
