@@ -11,6 +11,10 @@ IFLOW.md
 *.swp
 *.swo
 
+# Xmake
+.xmake/
+build/
+
 # CMake files
 CMakeCache.txt
 CMakeFiles/

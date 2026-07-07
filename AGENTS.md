@@ -4,22 +4,19 @@
 
 ```bash
 # 构建（SQLite only, Release）
-mkdir -p build && cd build && cmake .. && make -j$(nproc)
+xmake
 
 # 构建（含 PostgreSQL）
-cmake -DUSE_POSTGRESQL=ON .. && make -j$(nproc)
+xmake f --use_postgresql=y && xmake
 
 # 构建（含测试）
-cmake -DBUILD_TESTS=ON .. && make -j$(nproc) mping_tests
+xmake f --build_tests=y && xmake
 
 # 运行全部测试
-./mping_tests
+xmake run mping_tests
 
 # 运行单个测试（带详细输出）
-./mping_tests "[test_case_name]" -s
-
-# 使用 CTest 运行测试
-ctest --output-on-failure
+xmake run mping_tests "[test_case_name]" -s
 
 # 格式化代码
 clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
@@ -27,8 +24,8 @@ clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
 # 检查格式化（逐文件对比）
 for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
 
-# 安装到系统
-sudo make install
+# 安装到系统（需 root）
+sudo xmake install
 ```
 
 ## 项目概述
@@ -102,7 +99,7 @@ DatabaseManager        DatabaseManagerPG
 
 代码中使用 `#ifdef USE_POSTGRESQL` / `#ifdef USE_SQLITE` 宏进行条件编译。添加新数据库支持时需要修改：
 - `database_factory.cpp`：添加新的 `DatabaseType` 枚举值和创建逻辑
-- `CMakeLists.txt`：添加编译选项、依赖查找和源文件
+- `xmake.lua`：添加编译选项、依赖查找和源文件
 
 ## 编程规范
 1. **使用 C++23 标准实现**：利用现代 C++ 特性和性能优化
@@ -152,7 +149,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - 数据自动清理功能
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
-- 支持通过 `make install` 安装到系统
+- 支持通过 `xmake install` 安装到系统
 - **配置文件支持**：遵循 XDG 规范的配置文件管理
   - 支持 INI 格式配置文件
   - 自动从 XDG 配置目录加载配置
@@ -160,46 +157,34 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
   - 支持保存当前配置到文件
 
 ## 构建系统
-- **CMake 3.10+**：使用 CMake 作为构建系统
-- **C++23 标准**：`CMAKE_CXX_STANDARD 23`（必需）
+- **Xmake**：使用 Xmake 作为构建系统
+- **C++23 标准**（必需）
 - **支持构建类型**：Release（默认）和 Debug
 - **编译选项**：
-  - `-DUSE_POSTGRESQL=ON`：启用 PostgreSQL 支持
-  - `-DBUILD_TESTS=ON`：编译测试程序
-  - `-DENABLE_SANITIZERS=ON`：启用 AddressSanitizer 和 UndefinedBehaviorSanitizer
-  - `-DENABLE_COVERAGE=ON`：启用代码覆盖率
-- **安装支持**：支持通过 `make install` 安装到系统
+  - `--use_postgresql=y`：启用 PostgreSQL 支持
+  - `--build_tests=y`：编译测试程序
+  - `-m debug`：调试版本构建
+- **安装支持**：支持通过 `xmake install` 安装到系统
 
 ### 构建命令
 ```bash
-# 创建构建目录
-mkdir build && cd build
-
 # 仅启用 SQLite（默认）
-cmake ..
-make -j$(nproc)
+xmake
 
 # 启用 PostgreSQL 支持
-cmake -DUSE_POSTGRESQL=ON ..
-make -j$(nproc)
+xmake f --use_postgresql=y && xmake
 
 # 调试版本构建
-cmake -DCMAKE_BUILD_TYPE=Debug ..
-make -j$(nproc)
-
-# 使用构建脚本（支持 Debug/Release）
-# 注意：build.sh 不支持 -DUSE_POSTGRESQL=ON 和 -DBUILD_TESTS=ON，
-#       启用这些选项请直接使用 cmake 命令
-./build.sh [Debug|Release]
+xmake f -m debug && xmake
 
 # 安装到系统（需要 root 权限）
-sudo make install
+sudo xmake install
 ```
 
 ### 构建优化
 - **Release 模式**：`-O3 -DNDEBUG` 优化标志
 - **Debug 模式**：`-g -O0` 调试标志
-- **并行编译**：使用 `make -j$(nproc)` 加速编译
+- **并行编译**：Xmake 自动使用多核编译
 
 ## 依赖项
 - **CMake 3.10 或更高版本**
@@ -212,13 +197,13 @@ sudo make install
 ### 系统依赖安装
 ```bash
 # Debian/Ubuntu
-sudo apt-get install cmake build-essential libsqlite3-dev libpq-dev pkg-config
+sudo apt-get install build-essential libsqlite3-dev libpq-dev pkg-config
 
 # Fedora/RHEL
-sudo dnf install cmake gcc-c++ sqlite-devel postgresql-devel pkg-config
+sudo dnf install gcc-c++ sqlite-devel postgresql-devel pkg-config
 
 # macOS
-brew install cmake sqlite postgresql pkg-config
+brew install sqlite postgresql pkg-config
 ```
 
 ## 命令行选项
@@ -320,36 +305,19 @@ mping -S /path/to/config.conf
 ### 运行测试
 ```bash
 # 编译测试程序
-cd build
-cmake -DBUILD_TESTS=ON ..
-make -j$(nproc) mping_tests
+xmake f --build_tests=y && xmake
 
 # 运行所有测试
-./mping_tests
+xmake run mping_tests
 
 # 运行特定测试（使用 Catch2 过滤器）
-./mping_tests "[test_case_name]"
+xmake run mping_tests "[test_case_name]"
 
 # 显示详细测试输出
-./mping_tests -s
+xmake run mping_tests -s
 
 # 列出所有测试用例
-./mping_tests --list-tests
-```
-
-### 测试自动发现
-项目使用 CTest 和 Catch2 的自动测试发现功能。编译时，Catch2 会自动发现所有测试用例并注册到 CTest。
-
-```bash
-# 使用 CTest 运行测试
-cd build
-ctest --output-on-failure
-
-# 运行特定测试
-ctest -R test_case_name
-
-# 显示详细输出
-ctest --verbose
+xmake run mping_tests --list-tests
 ```
 
 ## 开发实践
@@ -389,17 +357,10 @@ host=localhost user=myuser password=mypass dbname=mydb
 ## 安装
 ```bash
 # 编译项目
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+xmake
 
-# 安装到系统（默认：/usr/local）
-sudo make install
-
-# 自定义安装路径
-cmake -DCMAKE_INSTALL_PREFIX=/opt/mping ..
-make -j$(nproc)
-sudo make install
+# 安装到系统（需要 root 权限）
+sudo xmake install
 ```
 
 安装后，可执行文件将位于：
@@ -407,7 +368,7 @@ sudo make install
 - 自定义安装路径：`$CMAKE_INSTALL_PREFIX/bin/mping`
 
 ## 版本信息
-项目版本信息通过 CMake 编译定义传递：
+项目版本信息通过 xmake 编译定义传递：
 - `PROJECT_NAME`：项目名称
 - `PROJECT_VERSION`：主版本号
 - `PROJECT_VERSION_MAJOR`：主版本号
@@ -417,4 +378,4 @@ sudo make install
 - `PROJECT_HOMEPAGE_URL`：项目主页
 - `COMPILE_TIME`：编译时间戳
 
-这些定义在编译时通过 `target_compile_definitions` 传递给源代码。
+这些定义在编译时通过 `add_defines` 传递给源代码。

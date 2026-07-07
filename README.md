@@ -64,37 +64,27 @@ Lines starting with `#` are treated as comments and ignored.
 
 To build mping, you need:
 
-- CMake 3.10 or higher
+- Xmake
 - A C++23 compatible compiler (GCC 13+, Clang 16+, MSVC 2022+)
 - SQLite3 development libraries
 - PostgreSQL development libraries (optional, for PostgreSQL support)
 
 ```bash
-mkdir build
-cd build
 # For SQLite only support
-cmake ..
-make -j$(nproc)
+xmake
 
 # For PostgreSQL support
-cmake -DUSE_POSTGRESQL=ON ..
-make -j$(nproc)
+xmake f --use_postgresql=y && xmake
 
 # Build with tests
-cmake -DBUILD_TESTS=ON ..
-make -j$(nproc) mping_tests
+xmake f --build_tests=y && xmake
 
-# Build with sanitizers (Debug)
-cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_SANITIZERS=ON ..
-make -j$(nproc)
-```
+# Run all tests
+xmake run mping_tests
 
-55 test cases (506 assertions) with Catch2 v3:
-
-```bash
-./mping_tests
-./mping_tests "[commands]"   # Run command pattern tests only
-./mping_tests --list-tests   # List all test cases
+# Run specific tests
+xmake run mping_tests "[commands]"
+xmake run mping_tests --list-tests
 ```
 
 ## Example
