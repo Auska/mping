@@ -1,4 +1,3 @@
-#include "ip_validator.h"
 #include "utils.h"
 
 #include <fstream>
@@ -6,6 +5,8 @@
 #include <print>
 #include <sstream>
 #include <stdexcept>
+
+#include "ip_validator.h"
 
 std::map<std::string, std::string> readHostsFromFile(const std::string& filename) {
     std::map<std::string, std::string> hosts;

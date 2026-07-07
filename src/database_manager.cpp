@@ -375,121 +375,93 @@ bool DatabaseManager::insertPingResults(
     return success;
 }
 
+std::string DatabaseManager::queryHostName(const std::string& ip) {
+    const char* sql = "SELECT hostname FROM hosts WHERE ip = ?;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db.get(), sql, -1, &stmt, 0) != SQLITE_OK) {
+        return {};
+    }
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    std::string hostname;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        auto* text = (const char*)sqlite3_column_text(stmt, 0);
+        if (text) hostname = text;
+    }
+    sqlite3_finalize(stmt);
+    return hostname;
+}
+
+PingStatistics DatabaseManager::queryStatistics(const std::string& ip) {
+    PingStatistics stats;
+    const char* sql = R"(
+        SELECT COUNT(*),
+               SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END),
+               AVG(CASE WHEN success = 1 THEN delay ELSE NULL END),
+               MAX(CASE WHEN success = 1 THEN delay ELSE NULL END),
+               MIN(CASE WHEN success = 1 THEN delay ELSE NULL END)
+        FROM ping_results WHERE ip = ?;
+    )";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db.get(), sql, -1, &stmt, 0) != SQLITE_OK) {
+        return stats;
+    }
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        stats.totalRecords = sqlite3_column_int(stmt, 0);
+        stats.successCount = sqlite3_column_int(stmt, 1);
+        stats.avgDelay =
+            sqlite3_column_type(stmt, 2) != SQLITE_NULL ? sqlite3_column_double(stmt, 2) : 0;
+        stats.maxDelay =
+            sqlite3_column_type(stmt, 3) != SQLITE_NULL ? sqlite3_column_int(stmt, 3) : 0;
+        stats.minDelay =
+            sqlite3_column_type(stmt, 4) != SQLITE_NULL ? sqlite3_column_int(stmt, 4) : 0;
+        stats.failureCount = stats.totalRecords - stats.successCount;
+        if (stats.totalRecords > 0) {
+            stats.successRate = (double)stats.successCount / stats.totalRecords * 100;
+            stats.failureRate = (double)stats.failureCount / stats.totalRecords * 100;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return stats;
+}
+
+void DatabaseManager::printRecentRecords(const std::string& ip) {
+    const char* sql =
+        "SELECT delay, success, timestamp FROM ping_results WHERE ip = ? "
+        "ORDER BY timestamp DESC LIMIT 10;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db.get(), sql, -1, &stmt, 0) != SQLITE_OK) {
+        std::println(std::cerr, "Failed to prepare recent records statement: {}",
+                     sqlite3_errmsg(db.get()));
+        return;
+    }
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_STATIC);
+    printRecentRecordsHeader();
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        auto* timestamp = (const char*)sqlite3_column_text(stmt, 2);
+        printRecentRecordRow(timestamp ? timestamp : "N/A", sqlite3_column_int(stmt, 0),
+                             sqlite3_column_int(stmt, 1) != 0);
+    }
+    sqlite3_finalize(stmt);
+}
+
 void DatabaseManager::queryIPStatistics(const std::string& ip) {
     std::lock_guard<std::mutex> lock(dbMutex);
-
     if (!db) {
         std::println(std::cerr, "Database not initialized");
         return;
     }
 
-    // 获取主机名
-    const char* selectHostSQL = "SELECT hostname FROM hosts WHERE ip = ?;";
-    sqlite3_stmt* hostStmt;
-    int rc = sqlite3_prepare_v2(db.get(), selectHostSQL, -1, &hostStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::println(std::cerr, "Failed to prepare host query statement: {}",
-                     sqlite3_errmsg(db.get()));
-        return;
+    auto hostname = queryHostName(ip);
+    printStatisticsHeader(ip, hostname);
+
+    auto stats = queryStatistics(ip);
+    printStatisticsBody(stats);
+
+    if (stats.totalRecords > 0) {
+        printRecentRecords(ip);
     }
-
-    sqlite3_bind_text(hostStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-    std::string hostname = "";
-    if (sqlite3_step(hostStmt) == SQLITE_ROW) {
-        const char* hostText = (const char*)sqlite3_column_text(hostStmt, 0);
-        if (hostText) {
-            hostname = hostText;
-        }
-    }
-    sqlite3_finalize(hostStmt);
-
-    std::println(std::cout, "Statistics for IP: {} ({})", ip, hostname);
-    std::println(std::cout, "=========================================================");
-
-    // 使用单个查询获取所有统计信息
-    const char* statsSQL = R"(
-        SELECT 
-        COUNT(*) as total_records,
-        SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count,
-        AVG(CASE WHEN success = 1 THEN delay ELSE NULL END) as avg_delay,
-        MAX(CASE WHEN success = 1 THEN delay ELSE NULL END) as max_delay,
-        MIN(CASE WHEN success = 1 THEN delay ELSE NULL END) as min_delay
-        FROM ping_results WHERE ip = ?;
-    )";
-
-    sqlite3_stmt* statsStmt;
-    rc = sqlite3_prepare_v2(db.get(), statsSQL, -1, &statsStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::println(std::cerr, "Failed to prepare statistics query statement: {}",
-                     sqlite3_errmsg(db.get()));
-        return;
-    }
-
-    sqlite3_bind_text(statsStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-
-    if (sqlite3_step(statsStmt) != SQLITE_ROW) {
-        std::println(std::cout, "No ping records found for this IP.");
-        sqlite3_finalize(statsStmt);
-        return;
-    }
-
-    int totalRecords = sqlite3_column_int(statsStmt, 0);
-    int successCount = sqlite3_column_int(statsStmt, 1);
-    double avgDelay =
-        sqlite3_column_type(statsStmt, 2) != SQLITE_NULL ? sqlite3_column_double(statsStmt, 2) : 0;
-    int maxDelay =
-        sqlite3_column_type(statsStmt, 3) != SQLITE_NULL ? sqlite3_column_int(statsStmt, 3) : 0;
-    int minDelay =
-        sqlite3_column_type(statsStmt, 4) != SQLITE_NULL ? sqlite3_column_int(statsStmt, 4) : 0;
-
-    sqlite3_finalize(statsStmt);
-
-    std::println(std::cout, "Total ping records: {}", totalRecords);
-
-    if (totalRecords == 0) {
-        std::println(std::cout, "No ping records found for this IP.");
-        return;
-    }
-
-    int failureCount   = totalRecords - successCount;
-    double successRate = (totalRecords > 0) ? (double)successCount / totalRecords * 100 : 0;
-    double failureRate = (totalRecords > 0) ? (double)failureCount / totalRecords * 100 : 0;
-
-    std::println(std::cout, "Successful pings: {}", successCount);
-    std::println(std::cout, "Failed pings: {}", failureCount);
-    std::println(std::cout, "Success rate: {:.2f}%", successRate);
-    std::println(std::cout, "Failure rate: {:.2f}%", failureRate);
-    std::println(std::cout, "Average delay (successful pings): {:.2f}ms", avgDelay);
-    std::println(std::cout, "Maximum delay (successful pings): {}ms", maxDelay);
-    std::println(std::cout, "Minimum delay (successful pings): {}ms", minDelay);
-
-    // 显示最近的10条记录
-    const char* recentSQL =
-        "SELECT delay, success, timestamp FROM ping_results WHERE ip = ? ORDER BY timestamp DESC "
-        "LIMIT 10;";
-    sqlite3_stmt* recentStmt;
-    rc = sqlite3_prepare_v2(db.get(), recentSQL, -1, &recentStmt, 0);
-    if (rc != SQLITE_OK) {
-        std::println(std::cerr, "Failed to prepare recent records statement: {}",
-                     sqlite3_errmsg(db.get()));
-        return;
-    }
-
-    sqlite3_bind_text(recentStmt, 1, ip.c_str(), -1, SQLITE_STATIC);
-
-    std::println(std::cout, "\nRecent ping records (last 10):");
-    std::println(std::cout, "Timestamp           \tDelay\tStatus");
-    std::println(std::cout, "--------------------------------------------------------");
-
-    while (sqlite3_step(recentStmt) == SQLITE_ROW) {
-        const char* timestamp = (const char*)sqlite3_column_text(recentStmt, 2);
-        int delay             = sqlite3_column_int(recentStmt, 0);
-        int success           = sqlite3_column_int(recentStmt, 1);
-
-        std::println(std::cout, "{}\t{}ms\t{}", timestamp ? timestamp : "N/A", delay,
-                     success ? "Success" : "Failed");
-    }
-    sqlite3_finalize(recentStmt);
 }
 
 void DatabaseManager::cleanupOldData(int days) {
@@ -797,7 +769,9 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     // 先执行 COUNT 查询以预分配容器大小
     std::string countSQL;
     if (days >= 0) {
-        countSQL = std::format("SELECT COUNT(*) FROM alerts WHERE created_time >= datetime('now', '-{} days');", days);
+        countSQL = std::
+            format("SELECT COUNT(*) FROM alerts WHERE created_time >= datetime('now', '-{} days');",
+                   days);
     } else {
         countSQL = "SELECT COUNT(*) FROM alerts;";
     }
@@ -814,7 +788,10 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManager::
     std::string selectAlertsSQL;
     if (days >= 0) {
         // 查询指定天数内的告警
-        selectAlertsSQL = std::format("SELECT ip, hostname, created_time FROM alerts WHERE created_time >= datetime('now', '-{} days') ORDER BY created_time DESC;", days);
+        selectAlertsSQL = std::format(
+            "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= datetime('now', "
+            "'-{} days') ORDER BY created_time DESC;",
+            days);
     } else {
         // 查询所有告警
         selectAlertsSQL =
@@ -859,7 +836,10 @@ DatabaseManager::getRecoveryRecords(int days) {
     // 先执行 COUNT 查询以预分配容器大小
     std::string countSQL;
     if (days >= 0) {
-        countSQL = std::format("SELECT COUNT(*) FROM recovery_records WHERE recovery_time >= datetime('now', '-{} days');", days);
+        countSQL = std::format(
+            "SELECT COUNT(*) FROM recovery_records WHERE recovery_time >= datetime('now', '-{} "
+            "days');",
+            days);
     } else {
         countSQL = "SELECT COUNT(*) FROM recovery_records;";
     }
@@ -876,7 +856,10 @@ DatabaseManager::getRecoveryRecords(int days) {
     std::string selectRecordsSQL;
     if (days >= 0) {
         // 查询指定天数内的恢复记录
-        selectRecordsSQL = std::format("SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE recovery_time >= datetime('now', '-{} days') ORDER BY recovery_time DESC;", days);
+        selectRecordsSQL = std::format(
+            "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE "
+            "recovery_time >= datetime('now', '-{} days') ORDER BY recovery_time DESC;",
+            days);
     } else {
         // 查询所有恢复记录
         selectRecordsSQL =

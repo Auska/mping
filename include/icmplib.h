@@ -560,6 +560,7 @@ namespace icmplib {
                 break;
             case ICMPLIB_ICMP_DESTINATION_UNREACHABLE:
                 result = Result::ResponseType::Unreachable;
+                [[fallthrough]];
             case ICMPLIB_ICMP_TIME_EXCEEDED:
                 if (result == Result::ResponseType::Timeout) {
                     result = Result::ResponseType::TimeExceeded;
@@ -592,6 +593,7 @@ namespace icmplib {
                 break;
             case ICMPLIB_ICMPV6_DESTINATION_UNREACHABLE:
                 result = Result::ResponseType::Unreachable;
+                [[fallthrough]];
             case ICMPLIB_ICMPV6_TIME_EXCEEDED:
                 if (result == Result::ResponseType::Timeout) {
                     result = Result::ResponseType::TimeExceeded;

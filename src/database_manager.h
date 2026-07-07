@@ -61,6 +61,11 @@ class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
     // 查询IP统计信息
     void queryIPStatistics(const std::string& ip) override;
 
+    // 拆分后的私有查询方法
+    std::string queryHostName(const std::string& ip);
+    PingStatistics queryStatistics(const std::string& ip);
+    void printRecentRecords(const std::string& ip);
+
     // 清理旧数据
     void cleanupOldData(int days) override;
 

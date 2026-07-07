@@ -304,7 +304,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
 TEST_CASE("ConfigFile atomic write — .tmp file cleanup", "[config_file][atomic]") {
     std::string testPath = "/tmp/test_atomic_XXXXXX.conf";
-    int fd = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -325,7 +325,7 @@ TEST_CASE("ConfigFile atomic write — .tmp file cleanup", "[config_file][atomic
         std::ifstream file(testPath);
         REQUIRE(file.is_open());
         std::string content((std::istreambuf_iterator<char>(file)),
-                             std::istreambuf_iterator<char>());
+                            std::istreambuf_iterator<char>());
 
         // Should contain section header and key=value
         REQUIRE(content.find("[section]") != std::string::npos);
@@ -344,7 +344,7 @@ TEST_CASE("ConfigFile atomic write — .tmp file cleanup", "[config_file][atomic
 
 TEST_CASE("ConfigFile save/load roundtrip preserves all values", "[config_file][roundtrip]") {
     std::string testPath = "/tmp/test_roundtrip_XXXXXX.conf";
-    int fd = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -400,7 +400,7 @@ TEST_CASE("ConfigFile save/load roundtrip preserves all values", "[config_file][
 
 TEST_CASE("ConfigFile save preserves original path", "[config_file][save]") {
     std::string testPath = "/tmp/test_origpath_XXXXXX.conf";
-    int fd = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
     REQUIRE(fd >= 0);
     close(fd);
 

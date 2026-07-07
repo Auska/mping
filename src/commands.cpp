@@ -18,15 +18,15 @@
 //  Command 基类
 // ══════════════════════════════════════════════════════════════════════════
 
-Command::Command(const ConfigManager::Config& cfg) : config(cfg) {}
+Command::Command(const ConfigManager::Config& cfg) : config(cfg) {
+}
 
 std::unique_ptr<DatabaseInterface> Command::createDatabase() {
     DatabaseType dbType = DatabaseType::SQLITE;
 
 #ifdef USE_POSTGRESQL
     if (config.usePostgreSQL
-        || DatabaseFactory::detectDatabaseType(config.databasePath)
-               == DatabaseType::POSTGRESQL) {
+        || DatabaseFactory::detectDatabaseType(config.databasePath) == DatabaseType::POSTGRESQL) {
         dbType = DatabaseType::POSTGRESQL;
     }
 #else
@@ -84,7 +84,8 @@ int QueryAlertsCommand::execute() {
     auto alerts = db->getActiveAlerts(config.queryAlerts);
     if (alerts.empty()) {
         if (config.queryAlerts >= 0) {
-            std::println(std::cout, "No active alerts within the last {} days.", config.queryAlerts);
+            std::println(std::cout, "No active alerts within the last {} days.",
+                         config.queryAlerts);
         } else {
             std::println(std::cout, "No active alerts.");
         }
@@ -143,9 +144,8 @@ int QueryRecoveryCommand::execute() {
 //  PingCommand
 // ══════════════════════════════════════════════════════════════════════════
 
-bool PingCommand::insertPingResults(
-    DatabaseInterface* db,
-    const std::vector<PingResult>& allResults) {
+bool PingCommand::insertPingResults(DatabaseInterface* db,
+                                    const std::vector<PingResult>& allResults) {
     if (!db) {
         return false;
     }
@@ -161,9 +161,7 @@ bool PingCommand::insertPingResults(
     return db->insertPingResults(dbResults);
 }
 
-bool PingCommand::processAlerts(
-    DatabaseInterface* db,
-    const std::vector<PingResult>& allResults) {
+bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults) {
     if (!db) {
         return false;
     }
@@ -188,7 +186,10 @@ bool PingCommand::processAlerts(
             }
         } else if (successFlag && isCurrentlyAlerted) {
             // 刚刚恢复正常，且之前有告警 → 移除告警并记录恢复
-            db->removeAlert(ip);
+            if (!db->removeAlert(ip)) {
+                std::println(std::cerr, "Failed to remove alert for IP: {}", ip);
+                success = false;
+            }
         }
         // 状态无变化 → 跳过写操作
     }

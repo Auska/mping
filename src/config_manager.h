@@ -11,14 +11,15 @@
 class ConfigManager {
    public:
     struct Config {
-        std::string filename       = "";
-        bool enableDatabase        = false;
-        std::string databasePath   = "ping_monitor.db";
-        bool silentMode            = false;
-        std::string queryIP        = "";
-        int cleanupDays            = -1;  // -1表示不执行清理
-        int queryAlerts            = -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
-        int queryRecoveryRecords   = -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
+        std::string filename     = "";
+        bool enableDatabase      = false;
+        std::string databasePath = "ping_monitor.db";
+        bool silentMode          = false;
+        std::string queryIP      = "";
+        int cleanupDays          = -1;  // -1表示不执行清理
+        int queryAlerts = -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
+        int queryRecoveryRecords =
+            -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
         bool loadConfigFile        = true;  // 是否加载配置文件
         std::string configFilePath = "";    // 指定的配置文件路径
 #ifdef USE_POSTGRESQL

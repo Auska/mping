@@ -31,13 +31,13 @@ toolchain("x86_64-musl")
     set_toolset("sh", "x86_64-unknown-linux-musl-g++")
     set_toolset("strip", "x86_64-unknown-linux-musl-strip")
     set_toolset("as", "x86_64-unknown-linux-musl-as")
-    add_syslinks("pthread")
     on_load(function (toolchain)
         local sdk = toolchain:sdkdir()
         if sdk then
             toolchain:add("includedirs", path.join(sdk, "x86_64-unknown-linux-musl", "sysroot", "usr", "include"))
             toolchain:add("linkdirs", path.join(sdk, "x86_64-unknown-linux-musl", "sysroot", "usr", "lib"))
         end
+        toolchain:add("ldflags", "-static")
     end)
 toolchain_end()
 

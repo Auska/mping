@@ -22,7 +22,7 @@ class DatabaseInterface;
  */
 class Command {
    public:
-    virtual ~Command() = default;
+    virtual ~Command()    = default;
     virtual int execute() = 0;
 
    protected:
@@ -72,10 +72,8 @@ class PingCommand : public Command {
     int execute() override;
 
    private:
-    bool insertPingResults(DatabaseInterface* db,
-                           const std::vector<PingResult>& allResults);
-    bool processAlerts(DatabaseInterface* db,
-                       const std::vector<PingResult>& allResults);
+    bool insertPingResults(DatabaseInterface* db, const std::vector<PingResult>& allResults);
+    bool processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults);
 };
 
 #endif  // COMMANDS_H

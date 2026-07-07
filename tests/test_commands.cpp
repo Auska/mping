@@ -1,5 +1,4 @@
 #include <catch2/catch_all.hpp>
-
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -15,7 +14,7 @@
 // 辅助函数：创建带数据的临时数据库
 static std::string createPopulatedDatabase() {
     std::string testDb = "/tmp/test_commands_XXXXXX.db";
-    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -28,8 +27,8 @@ static std::string createPopulatedDatabase() {
         {"192.168.1.1", "host1", 15, true, "2025-01-01 00:01:00"},
         {"192.168.1.1", "host1", 20, true, "2025-01-01 00:02:00"},
         {"192.168.1.2", "host2", 10, true, "2025-01-01 00:00:00"},
-        {"192.168.1.2", "host2", 0,  false, "2025-01-01 00:01:00"},
-        {"10.0.0.1",    "host3", 0,  false, "2025-01-01 00:00:00"},
+        {"192.168.1.2", "host2", 0, false, "2025-01-01 00:01:00"},
+        {"10.0.0.1", "host3", 0, false, "2025-01-01 00:00:00"},
     };
     REQUIRE(db.insertPingResults(results));
 
@@ -46,7 +45,7 @@ static std::string createPopulatedDatabase() {
 
 TEST_CASE("Command creates database correctly", "[commands][base]") {
     std::string testDb = "/tmp/test_cmd_base_XXXXXX.db";
-    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -62,8 +61,8 @@ TEST_CASE("Command creates database correctly", "[commands][base]") {
 
 TEST_CASE("Command handles invalid database path", "[commands][base]") {
     SECTION("DatabaseFactory returns nullptr for unsupported type") {
-        auto db = DatabaseFactory::createDatabase(DatabaseType::SQLITE,
-                                                   "/nonexistent/deep/path/db.db");
+        auto db =
+            DatabaseFactory::createDatabase(DatabaseType::SQLITE, "/nonexistent/deep/path/db.db");
         // Returns a DatabaseManager but init will fail
         REQUIRE(db != nullptr);
         REQUIRE(db->initialize() == false);
@@ -79,8 +78,8 @@ TEST_CASE("QueryIPCommand executes successfully", "[commands][query]") {
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath = testDb;
-    cfg.queryIP = "192.168.1.1";
+    cfg.databasePath   = testDb;
+    cfg.queryIP        = "192.168.1.1";
 
     SECTION("Returns 0 for existing host") {
         QueryIPCommand cmd(cfg);
@@ -105,8 +104,8 @@ TEST_CASE("CleanupCommand executes successfully", "[commands][cleanup]") {
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath = testDb;
-    cfg.cleanupDays = 365;  // 清理一年前的数据（应该无影响）
+    cfg.databasePath   = testDb;
+    cfg.cleanupDays    = 365;  // 清理一年前的数据（应该无影响）
 
     SECTION("Returns 0") {
         CleanupCommand cmd(cfg);
@@ -136,7 +135,7 @@ TEST_CASE("QueryAlertsCommand executes successfully", "[commands][alerts]") {
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath = testDb;
+    cfg.databasePath   = testDb;
 
     SECTION("Returns 0 with alerts present") {
         cfg.queryAlerts = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
@@ -169,7 +168,7 @@ TEST_CASE("QueryRecoveryCommand executes successfully", "[commands][recovery]") 
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath = testDb;
+    cfg.databasePath   = testDb;
 
     SECTION("Returns 0 with recovery records") {
         cfg.queryRecoveryRecords = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
@@ -214,7 +213,7 @@ TEST_CASE("PingCommand error handling", "[commands][ping]") {
 TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
     // 创建一个符合格式的主机文件
     std::string testFile = "/tmp/test_ping_hosts_XXXXXX.txt";
-    int fd = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+    int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -227,7 +226,7 @@ TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
 
     SECTION("Executes ping with file hosts and returns 0") {
         ConfigManager::Config cfg;
-        cfg.filename = testFile;
+        cfg.filename   = testFile;
         cfg.silentMode = true;
         PingCommand cmd(cfg);
         // 实际 ping 本地主机应该成功
@@ -236,15 +235,15 @@ TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
 
     SECTION("Executes ping with database enabled") {
         std::string testDb = "/tmp/test_ping_cmd_XXXXXX.db";
-        int dbFd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+        int dbFd           = mkstemps(const_cast<char*>(testDb.c_str()), 3);
         REQUIRE(dbFd >= 0);
         close(dbFd);
 
         ConfigManager::Config cfg;
-        cfg.filename = testFile;
+        cfg.filename       = testFile;
         cfg.enableDatabase = true;
-        cfg.databasePath = testDb;
-        cfg.silentMode = true;
+        cfg.databasePath   = testDb;
+        cfg.silentMode     = true;
         PingCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);
 
@@ -262,7 +261,7 @@ TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
 
 TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
     std::string testFile = "/tmp/test_alert_hosts_XXXXXX.txt";
-    int fd = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+    int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -272,17 +271,17 @@ TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
     file.close();
 
     std::string testDb = "/tmp/test_alert_db_XXXXXX.db";
-    int dbFd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int dbFd           = mkstemps(const_cast<char*>(testDb.c_str()), 3);
     REQUIRE(dbFd >= 0);
     close(dbFd);
 
     // 第一次运行：127.0.0.1 可达，不应产生告警
     {
         ConfigManager::Config cfg;
-        cfg.filename = testFile;
+        cfg.filename       = testFile;
         cfg.enableDatabase = true;
-        cfg.databasePath = testDb;
-        cfg.silentMode = true;
+        cfg.databasePath   = testDb;
+        cfg.silentMode     = true;
         PingCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);
     }

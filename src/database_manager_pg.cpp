@@ -266,7 +266,8 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
 
 // 辅助函数：创建IP表和索引（已重构为使用统一表，此函数保持为空以保持接口兼容性）
 bool DatabaseManagerPG::createIPTables(
-    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& /*results*/) {
+    const std::vector<
+        std::tuple<std::string, std::string, short, bool, std::string>>& /*results*/) {
     // 已经在initialize()中创建了统一的ping_results表和索引
     // 此处无需额外操作
     return true;
@@ -460,118 +461,97 @@ bool DatabaseManagerPG::insertPingResults(
 
 void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
     std::lock_guard<std::mutex> lock(dbMutex);
-
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return;
     }
+    printStatisticsHeader(ip, queryHostName(ip));
 
-    // 使用参数化查询获取主机名
-    const char* hostQuerySQL   = "SELECT hostname FROM hosts WHERE ip = $1";
-    const char* paramValues[1] = {ip.c_str()};
-    int paramLengths[1]        = {static_cast<int>(ip.length())};
-    int paramFormats[1]        = {0};
+    auto stats = queryStatistics(ip);
+    printStatisticsBody(stats);
 
-    PGresult* hostRes = PQexecParams(conn.get(), hostQuerySQL, 1, nullptr, paramValues,
-                                     paramLengths, paramFormats, 0);
-    if (!hostRes || PQresultStatus(hostRes) != PGRES_TUPLES_OK) {
-        std::println(std::cerr, "Failed to query host information");
-        if (hostRes) PQclear(hostRes);
-        return;
+    if (stats.totalRecords > 0) {
+        printRecentRecords(ip);
+    }
+}
+
+std::string DatabaseManagerPG::queryHostName(const std::string& ip) {
+    const char* sql     = "SELECT hostname FROM hosts WHERE ip = $1";
+    const char* vals[1] = {ip.c_str()};
+    int lens[1]         = {static_cast<int>(ip.length())};
+    int fmts[1]         = {0};
+
+    PGresult* res = PQexecParams(conn.get(), sql, 1, nullptr, vals, lens, fmts, 0);
+    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
+        if (res) PQclear(res);
+        return {};
     }
 
-    std::string hostname = "";
-    if (PQntuples(hostRes) > 0) {
-        char* hostText = PQgetvalue(hostRes, 0, 0);
-        if (hostText) {
-            hostname = hostText;
+    std::string hostname;
+    if (PQntuples(res) > 0 && PQgetvalue(res, 0, 0)) {
+        hostname = PQgetvalue(res, 0, 0);
+    }
+    PQclear(res);
+    return hostname;
+}
+
+PingStatistics DatabaseManagerPG::queryStatistics(const std::string& ip) {
+    PingStatistics stats;
+    const char* sql =
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE success = true), "
+        "AVG(delay) FILTER (WHERE success = true), "
+        "MAX(delay) FILTER (WHERE success = true), "
+        "MIN(delay) FILTER (WHERE success = true) "
+        "FROM ping_results WHERE ip = $1";
+    const char* vals[1] = {ip.c_str()};
+    int lens[1]         = {static_cast<int>(ip.length())};
+    int fmts[1]         = {0};
+
+    PGresult* res = PQexecParams(conn.get(), sql, 1, nullptr, vals, lens, fmts, 0);
+    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
+        if (res) PQclear(res);
+        return stats;
+    }
+
+    if (PQntuples(res) > 0) {
+        stats.totalRecords = std::atoi(PQgetvalue(res, 0, 0));
+        stats.successCount = std::atoi(PQgetvalue(res, 0, 1));
+        stats.avgDelay     = PQgetvalue(res, 0, 2) ? std::atof(PQgetvalue(res, 0, 2)) : 0;
+        stats.maxDelay     = PQgetvalue(res, 0, 3) ? std::atoi(PQgetvalue(res, 0, 3)) : 0;
+        stats.minDelay     = PQgetvalue(res, 0, 4) ? std::atoi(PQgetvalue(res, 0, 4)) : 0;
+        stats.failureCount = stats.totalRecords - stats.successCount;
+        if (stats.totalRecords > 0) {
+            stats.successRate = (double)stats.successCount / stats.totalRecords * 100;
+            stats.failureRate = (double)stats.failureCount / stats.totalRecords * 100;
         }
     }
-    PQclear(hostRes);
+    PQclear(res);
+    return stats;
+}
 
-    std::println(std::cout, "Statistics for IP: {} ({})", ip, hostname);
-    std::println(std::cout, "=========================================================");
+void DatabaseManagerPG::printRecentRecords(const std::string& ip) {
+    const char* sql =
+        "SELECT delay, success, timestamp FROM ping_results WHERE ip = $1 "
+        "ORDER BY timestamp DESC LIMIT 10";
+    const char* vals[1] = {ip.c_str()};
+    int lens[1]         = {static_cast<int>(ip.length())};
+    int fmts[1]         = {0};
 
-    // 使用参数化查询获取统计信息
-    const char* statsSQL =
-        "SELECT "
-        "COUNT(*) as total_records, "
-        "COUNT(*) FILTER (WHERE success = true) as success_count, "
-        "AVG(delay) FILTER (WHERE success = true) as avg_delay, "
-        "MAX(delay) FILTER (WHERE success = true) as max_delay, "
-        "MIN(delay) FILTER (WHERE success = true) as min_delay "
-        "FROM ping_results WHERE ip = $1";
-
-    PGresult* statsRes =
-        PQexecParams(conn.get(), statsSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (!statsRes || PQresultStatus(statsRes) != PGRES_TUPLES_OK) {
-        std::println(std::cerr, "Failed to query statistics");
-        if (statsRes) PQclear(statsRes);
-        return;
-    }
-
-    if (PQntuples(statsRes) == 0) {
-        std::println(std::cout, "No ping records found for this IP.");
-        PQclear(statsRes);
-        return;
-    }
-
-    int totalRecords = std::atoi(PQgetvalue(statsRes, 0, 0));
-    int successCount = std::atoi(PQgetvalue(statsRes, 0, 1));
-    double avgDelay  = (PQgetvalue(statsRes, 0, 2)) ? std::atof(PQgetvalue(statsRes, 0, 2)) : 0;
-    int maxDelay     = (PQgetvalue(statsRes, 0, 3)) ? std::atoi(PQgetvalue(statsRes, 0, 3)) : 0;
-    int minDelay     = (PQgetvalue(statsRes, 0, 4)) ? std::atoi(PQgetvalue(statsRes, 0, 4)) : 0;
-
-    PQclear(statsRes);
-
-    std::println(std::cout, "Total ping records: {}", totalRecords);
-
-    if (totalRecords == 0) {
-        std::println(std::cout, "No ping records found for this IP.");
-        return;
-    }
-
-    int failureCount = totalRecords - successCount;
-    double successRate =
-        (totalRecords > 0) ? static_cast<double>(successCount) / totalRecords * 100 : 0;
-    double failureRate =
-        (totalRecords > 0) ? static_cast<double>(failureCount) / totalRecords * 100 : 0;
-
-    std::println(std::cout, "Successful pings: {}", successCount);
-    std::println(std::cout, "Failed pings: {}", failureCount);
-    std::println(std::cout, "Success rate: {:.2f}%", successRate);
-    std::println(std::cout, "Failure rate: {:.2f}%", failureRate);
-    std::println(std::cout, "Average delay (successful pings): {:.2f}ms", avgDelay);
-    std::println(std::cout, "Maximum delay (successful pings): {}ms", maxDelay);
-    std::println(std::cout, "Minimum delay (successful pings): {}ms", minDelay);
-
-    // 使用参数化查询获取最近的10条记录
-    const char* recentSQL =
-        "SELECT delay, success, timestamp FROM ping_results WHERE ip = $1 ORDER BY timestamp DESC "
-        "LIMIT 10";
-
-    PGresult* recentRes =
-        PQexecParams(conn.get(), recentSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (!recentRes || PQresultStatus(recentRes) != PGRES_TUPLES_OK) {
+    PGresult* res = PQexecParams(conn.get(), sql, 1, nullptr, vals, lens, fmts, 0);
+    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query recent records");
-        if (recentRes) PQclear(recentRes);
+        if (res) PQclear(res);
         return;
     }
 
-    std::println(std::cout, "\nRecent ping records (last 10):");
-    std::println(std::cout, "Timestamp           \tDelay\tStatus");
-    std::println(std::cout, "--------------------------------------------------------");
-
-    for (int i = 0; i < PQntuples(recentRes); i++) {
-        char* timestamp = PQgetvalue(recentRes, i, 2);
-        char* delay     = PQgetvalue(recentRes, i, 0);
-        char* success   = PQgetvalue(recentRes, i, 1);
-
-        std::println(std::cout, "{}\t{}ms\t{}", timestamp ? timestamp : "N/A",
-                     delay ? delay : "N/A",
-                     (success && std::strcmp(success, "t") == 0 ? "Success" : "Failed"));
+    printRecentRecordsHeader();
+    for (int i = 0; i < PQntuples(res); i++) {
+        char* ts = PQgetvalue(res, i, 2);
+        char* d  = PQgetvalue(res, i, 0);
+        char* s  = PQgetvalue(res, i, 1);
+        printRecentRecordRow(ts ? ts : "N/A", d ? std::atoi(d) : 0, s && std::strcmp(s, "t") == 0);
     }
-    PQclear(recentRes);
+    PQclear(res);
 }
 
 void DatabaseManagerPG::cleanupOldData(int days) {
@@ -608,9 +588,8 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     // 清理alerts表中超过指定天数的告警记录
     const char* cleanupAlertsSQL =
         "DELETE FROM alerts WHERE created_time < NOW() - ($1 * INTERVAL '1 day')";
-    PGresult* cleanupAlertsRes =
-        PQexecParams(conn.get(), cleanupAlertsSQL, 1, nullptr, paramValues, paramLengths,
-                     paramFormats, 0);
+    PGresult* cleanupAlertsRes = PQexecParams(conn.get(), cleanupAlertsSQL, 1, nullptr, paramValues,
+                                              paramLengths, paramFormats, 0);
 
     if (PQresultStatus(cleanupAlertsRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to cleanup old alerts: {}",
@@ -629,9 +608,8 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     // 清理recovery_records表中超过指定天数的恢复记录
     const char* cleanupRecoverySQL =
         "DELETE FROM recovery_records WHERE recovery_time < NOW() - ($1 * INTERVAL '1 day')";
-    PGresult* cleanupRecoveryRes =
-        PQexecParams(conn.get(), cleanupRecoverySQL, 1, nullptr, paramValues, paramLengths,
-                     paramFormats, 0);
+    PGresult* cleanupRecoveryRes = PQexecParams(conn.get(), cleanupRecoverySQL, 1, nullptr,
+                                                paramValues, paramLengths, paramFormats, 0);
 
     if (PQresultStatus(cleanupRecoveryRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to cleanup old recovery records: {}",

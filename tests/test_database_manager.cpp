@@ -400,10 +400,10 @@ TEST_CASE("DatabaseManager cleanupOldData clears all tables", "[database][sqlite
 
     SECTION("Cleanup preserves hosts table") {
         // Insert multiple hosts with old timestamps
-        std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results = {
-            {"192.168.1.1", "host1", 10, true, "2024-01-01 00:00:00"},
-            {"192.168.1.2", "host2", 20, true, "2024-01-01 00:00:01"},
-            {"192.168.1.3", "host3", 30, true, "2024-01-01 00:00:02"}};
+        std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results =
+            {{"192.168.1.1", "host1", 10, true, "2024-01-01 00:00:00"},
+             {"192.168.1.2", "host2", 20, true, "2024-01-01 00:00:01"},
+             {"192.168.1.3", "host3", 30, true, "2024-01-01 00:00:02"}};
         REQUIRE(db.insertPingResults(results) == true);
 
         auto hostsBefore = db.getAllHosts();
@@ -528,7 +528,7 @@ TEST_CASE("DatabaseFactory", "[database][factory]") {
 
 TEST_CASE("DatabaseManager alert lifecycle integration", "[database][sqlite][integration]") {
     std::string testDb = "/tmp/test_lifecycle_XXXXXX.db";
-    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -575,7 +575,7 @@ TEST_CASE("DatabaseManager alert lifecycle integration", "[database][sqlite][int
 
 TEST_CASE("DatabaseManager cleanupOldPingResults", "[database][sqlite]") {
     std::string testDb = "/tmp/test_cleanuppr_XXXXXX.db";
-    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -603,7 +603,7 @@ TEST_CASE("DatabaseManager cleanupOldPingResults", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager concurrent access", "[database][sqlite][concurrent]") {
     std::string testDb = "/tmp/test_concurrent_XXXXXX.db";
-    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -612,7 +612,7 @@ TEST_CASE("DatabaseManager concurrent access", "[database][sqlite][concurrent]")
         REQUIRE(db.initialize());
 
         std::vector<std::thread> threads;
-        constexpr int THREAD_COUNT = 4;
+        constexpr int THREAD_COUNT       = 4;
         constexpr int INSERTS_PER_THREAD = 100;
 
         for (int t = 0; t < THREAD_COUNT; ++t) {

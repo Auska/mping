@@ -293,7 +293,7 @@ TEST_CASE("ConfigManager multiple options", "[config]") {
     SECTION("Multiple valid options") {
         reset_getopt();
         ConfigManager configManager;
-        char* argv[] = {const_cast<char*>("mping"),   const_cast<char*>("-d"),
+        char* argv[] = {const_cast<char*>("mping"), const_cast<char*>("-d"),
                         const_cast<char*>("test.db"), const_cast<char*>("-s")};
         REQUIRE(configManager.parseArguments(4, argv) == true);
         const auto& config = configManager.getConfig();
