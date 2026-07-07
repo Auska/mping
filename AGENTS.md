@@ -15,6 +15,9 @@ xmake f --build_tests=y && xmake
 # 构建（含测试 + PostgreSQL）
 xmake f --build_tests=y --use_postgresql=y && xmake
 
+# 交叉编译（x86_64-musl, /opt/x-tools）
+xmake f --use_cross=y && xmake
+
 # 运行全部测试
 xmake run mping_tests
 
