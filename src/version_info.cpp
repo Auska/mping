@@ -24,6 +24,13 @@ void print_version_info() {
     std::println(std::cout, "Compiler: Unknown");
 #endif
 
+    // 显示数据库后端信息
+#if defined(USE_POSTGRESQL)
+    std::println(std::cout, "Database: PostgreSQL");
+#elif defined(USE_SQLITE)
+    std::println(std::cout, "Database: SQLite");
+#endif
+
     // 显示平台信息
 #ifdef _WIN32
     std::println(std::cout, "Platform: Windows 32-bit");

@@ -13,10 +13,12 @@ IFLOW.md
 
 # Xmake
 .xmake/
-build/
+
+# LSP
+compile_commands.json
+.cache/
 
 # CMake files
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-compile_commands.json
