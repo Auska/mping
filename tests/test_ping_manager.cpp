@@ -2,6 +2,7 @@
 #include <chrono>
 #include <thread>
 
+#include "commands.h"
 #include "ping_manager.h"
 
 TEST_CASE("PingManager basic functionality", "[ping]") {
@@ -13,11 +14,11 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
         auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.size() == 1);
 
-        const auto& [ip, hostname, success, delay, timestamp] = results[0];
-        REQUIRE(ip == "127.0.0.1");
-        REQUIRE(hostname == "localhost");
+        const auto& result = results[0];
+        REQUIRE(result.ip == "127.0.0.1");
+        REQUIRE(result.hostname == "localhost");
         // localhost should be reachable
-        REQUIRE(success == true);
+        REQUIRE(result.success == true);
     }
 
     SECTION("Ping multiple hosts") {
@@ -36,10 +37,10 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
         auto results = pingManager.performPing(hosts, 1);
         REQUIRE(results.size() == 1);
 
-        const auto& [ip, hostname, success, delay, timestamp] = results[0];
-        REQUIRE(success == false);
+        const auto& result = results[0];
+        REQUIRE(result.success == false);
         // Failed pings return timeout value (1000ms for 1 second timeout), not -1
-        REQUIRE(delay > 0);
+        REQUIRE(result.delayMs > 0);
     }
 
     SECTION("Ping with empty hosts list") {
@@ -80,10 +81,8 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
         std::map<std::string, std::string> hosts1 = {{"127.0.0.1", "localhost1"}};
         std::map<std::string, std::string> hosts2 = {{"127.0.0.2", "localhost2"}};
 
-        std::vector<std::vector<std::tuple<std::string, std::string, bool, short, std::string>>>
-            results1;
-        std::vector<std::vector<std::tuple<std::string, std::string, bool, short, std::string>>>
-            results2;
+        std::vector<std::vector<PingResult>> results1;
+        std::vector<std::vector<PingResult>> results2;
 
         std::thread t1([&]() {
             PingManager pm1;

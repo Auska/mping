@@ -32,7 +32,7 @@ class Command {
 
     // 根据配置和编译选项创建数据库实例
     std::unique_ptr<DatabaseInterface> createDatabase();
-    bool initializeDatabase(DatabaseInterface* db);
+    bool initializeDatabase(DatabaseInterface& db);
 };
 
 // ─── 查询 IP 统计 ────────────────────────────────────────────────────────
@@ -63,8 +63,16 @@ class QueryRecoveryCommand : public Command {
     int execute() override;
 };
 
+// ─── Ping 结果 ───────────────────────────────────────────────────────────
+struct PingResult {
+    std::string ip;
+    std::string hostname;
+    bool success  = false;
+    short delayMs = 0;
+    std::string timestamp;
+};
+
 // ─── 执行 Ping ────────────────────────────────────────────────────────────
-using PingResult = std::tuple<std::string, std::string, bool, short, std::string>;
 
 class PingCommand : public Command {
    public:

@@ -41,6 +41,12 @@ class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
     bool insertPingResultsBatch(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
+    // 执行SQL语句并处理错误
+    bool execSQL(const char* sql, const std::string& context);
+
+    // 执行带天数参数的删除并返回删除行数，失败返回 -1
+    int execDelete(const char* table, int days);
+
    public:
     // 构造函数和析构函数
     explicit DatabaseManager(const std::string& path);

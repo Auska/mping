@@ -3,6 +3,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ class ConfigFile {
    private:
     std::map<std::string, std::map<std::string, std::string>> configData;
     std::vector<ConfigEntry> originalEntries;
+    std::set<std::pair<std::string, std::string>> knownEntries;
     std::string filePath;
     bool loaded;
 
@@ -30,6 +32,8 @@ class ConfigFile {
    public:
     ConfigFile();
     ~ConfigFile();
+    ConfigFile(ConfigFile&&)            = default;
+    ConfigFile& operator=(ConfigFile&&) = default;
 
     // 从指定路径加载配置文件
     bool load(const std::string& path);
@@ -90,10 +94,10 @@ class ConfigFile {
     void clear();
 
     // 检查是否已加载
-    bool isLoaded() const;
+    bool isLoaded() const noexcept;
 
     // 获取配置文件路径
-    std::string getFilePath() const;
+    std::string getFilePath() const noexcept;
 
     // 获取 XDG 配置目录路径
     static std::string getXDGConfigHome();

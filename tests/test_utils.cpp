@@ -7,7 +7,7 @@
 TEST_CASE("Utils file reading", "[utils]") {
     SECTION("Read hosts from valid file") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         // Write test data
@@ -28,7 +28,7 @@ TEST_CASE("Utils file reading", "[utils]") {
 
     SECTION("Read hosts from file with comments") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         std::ofstream file(testFile);
@@ -47,7 +47,7 @@ TEST_CASE("Utils file reading", "[utils]") {
 
     SECTION("Read hosts from empty file") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         auto hosts = readHostsFromFile(testFile);
@@ -64,7 +64,7 @@ TEST_CASE("Utils file reading", "[utils]") {
 
     SECTION("Read hosts from file with invalid format") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         std::ofstream file(testFile);
@@ -81,7 +81,7 @@ TEST_CASE("Utils file reading", "[utils]") {
 
     SECTION("Read hosts with whitespace variations") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         std::ofstream file(testFile);
@@ -101,7 +101,7 @@ TEST_CASE("Utils file reading", "[utils]") {
 TEST_CASE("Utils edge cases", "[utils]") {
     SECTION("Read hosts with very long hostname") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         std::ofstream file(testFile);
@@ -119,7 +119,7 @@ TEST_CASE("Utils edge cases", "[utils]") {
 
     SECTION("Read hosts with special characters in hostname") {
         std::string testFile = "/tmp/test_hosts_XXXXXX.txt";
-        int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+        int fd               = mkstemps(testFile.data(), 4);
         REQUIRE(fd >= 0);
 
         std::ofstream file(testFile);

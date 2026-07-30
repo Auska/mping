@@ -15,8 +15,10 @@
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
+#include "commands.h"
 #include "icmplib.h"
 
 namespace {
@@ -37,10 +39,10 @@ std::string getCurrentTimestamp() {
     return ss.str();
 }
 
-std::tuple<std::string, std::string, bool, short, std::string> pingHostRaw(
-    const std::string& ip, const std::string& hostname, int pingCount, int timeoutSeconds) {
-    std::vector<short> delays;
-    bool success = false;
+PingResult pingHostRaw(const std::string& ip, const std::string& hostname, int pingCount,
+                       int timeoutSeconds) {
+    bool success   = false;
+    short minDelay = std::numeric_limits<short>::max();
 
     unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
     icmplib::IPAddress target(ip);
@@ -50,22 +52,28 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHostRaw(
         if (result.response == icmplib::PingResult::ResponseType::Success) {
             success = true;
         }
-        delays.push_back(static_cast<short>(result.delay));
+        minDelay = std::min(minDelay, static_cast<short>(result.delay));
     }
 
-    short minDelay = *std::ranges::min_element(delays);
-    return std::make_tuple(ip, hostname, success, minDelay, getCurrentTimestamp());
+    return {.ip        = ip,
+            .hostname  = hostname,
+            .success   = success,
+            .delayMs   = minDelay,
+            .timestamp = getCurrentTimestamp()};
 }
 
-std::tuple<std::string, std::string, bool, short, std::string> pingHostSystem(
-    const std::string& ip, const std::string& hostname, int pingCount, int timeoutSeconds) {
+PingResult pingHostSystem(const std::string& ip, const std::string& hostname, int pingCount,
+                          int timeoutSeconds) {
     std::string cmd = "LANG=C ping -c " + std::to_string(pingCount) + " -W "
                       + std::to_string(timeoutSeconds) + " " + ip + " 2>/dev/null";
 
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) {
-        return std::make_tuple(ip, hostname, false, static_cast<short>(timeoutSeconds * 1000),
-                               getCurrentTimestamp());
+        return {.ip        = ip,
+                .hostname  = hostname,
+                .success   = false,
+                .delayMs   = static_cast<short>(timeoutSeconds * 1000),
+                .timestamp = getCurrentTimestamp()};
     }
 
     std::string output;
@@ -90,22 +98,26 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHostSystem(
                     try {
                         double ms = std::stod(minStr);
                         delay     = static_cast<short>(std::round(ms));
-                    } catch (...) {
+                    } catch (const std::exception& e) {
+                        std::println(std::cerr, "Warning: Failed to parse ping delay '{}': {}",
+                                     minStr, e.what());
                     }
                 }
             }
         }
     }
 
-    return std::make_tuple(ip, hostname, success, delay, getCurrentTimestamp());
+    return {.ip        = ip,
+            .hostname  = hostname,
+            .success   = success,
+            .delayMs   = delay,
+            .timestamp = getCurrentTimestamp()};
 }
 
 }  // namespace
 
-std::tuple<std::string, std::string, bool, short, std::string> pingHost(const std::string& ip,
-                                                                        const std::string& hostname,
-                                                                        int pingCount,
-                                                                        int timeoutSeconds) {
+PingResult pingHost(const std::string& ip, const std::string& hostname, int pingCount,
+                    int timeoutSeconds) {
     if (hasRawSocketCapability()) {
         return pingHostRaw(ip, hostname, pingCount, timeoutSeconds);
     }
@@ -113,10 +125,6 @@ std::tuple<std::string, std::string, bool, short, std::string> pingHost(const st
 }
 
 PingManager::PingManager() {
-    size_t threadCount = std::max(size_t{1}, DEFAULT_MAX_CONCURRENT);
-    for (size_t i = 0; i < threadCount; ++i) {
-        workers.emplace_back([this] { workerLoop(); });
-    }
 }
 
 PingManager::~PingManager() {
@@ -126,6 +134,13 @@ PingManager::~PingManager() {
         if (w.joinable()) {
             w.join();
         }
+    }
+}
+
+void PingManager::ensureThreadCount(size_t needed) {
+    size_t target = std::min(std::max(size_t{1}, needed), DEFAULT_MAX_CONCURRENT);
+    while (workers.size() < target) {
+        workers.emplace_back([this] { workerLoop(); });
     }
 }
 
@@ -141,22 +156,30 @@ void PingManager::workerLoop() {
             task = std::move(taskQueue.front());
             taskQueue.pop();
         }
-        task();
+        try {
+            task();
+        } catch (const std::exception& e) {
+            std::println(std::cerr, "Ping task threw an exception: {}", e.what());
+        } catch (...) {
+            std::println(std::cerr, "Ping task threw an unknown exception");
+        }
     }
 }
 
-std::vector<std::tuple<std::string, std::string, bool, short, std::string>>
-PingManager::performPingInternal(const std::map<std::string, std::string>& hosts, int pingCount,
-                                 int timeoutSeconds, size_t /*maxConcurrent*/) {
+std::vector<PingResult> PingManager::performPingInternal(
+    const std::map<std::string, std::string>& hosts, int pingCount, int timeoutSeconds,
+    size_t /*maxConcurrent*/) {
     if (hosts.empty()) {
         return {};
     }
 
-    std::vector<std::tuple<std::string, std::string, bool, short, std::string>> allResults;
+    ensureThreadCount(hosts.size());
+
+    std::vector<PingResult> allResults;
     allResults.reserve(hosts.size());
 
     std::mutex resultsMutex;
-    std::atomic<size_t> activeTasks(hosts.size());
+    size_t activeTasks = hosts.size();
     std::mutex completionMutex;
     std::condition_variable completionCV;
 
@@ -164,14 +187,17 @@ PingManager::performPingInternal(const std::map<std::string, std::string>& hosts
         {
             std::unique_lock<std::mutex> lock(queueMutex);
             taskQueue.push([ip, hostname, pingCount, timeoutSeconds, &allResults, &resultsMutex,
-                            &activeTasks, &completionCV] {
+                            &activeTasks, &completionMutex, &completionCV] {
                 auto result = pingHost(ip, hostname, pingCount, timeoutSeconds);
                 {
                     std::lock_guard<std::mutex> lock(resultsMutex);
                     allResults.push_back(result);
                 }
-                if (--activeTasks == 0) {
-                    completionCV.notify_one();
+                {
+                    std::lock_guard<std::mutex> lock(completionMutex);
+                    if (--activeTasks == 0) {
+                        completionCV.notify_one();
+                    }
                 }
             });
         }
@@ -180,21 +206,21 @@ PingManager::performPingInternal(const std::map<std::string, std::string>& hosts
 
     {
         std::unique_lock<std::mutex> lock(completionMutex);
-        completionCV.wait(lock, [&] { return activeTasks.load() == 0; });
+        completionCV.wait(lock, [&] { return activeTasks == 0; });
     }
 
     return allResults;
 }
 
-std::vector<std::tuple<std::string, std::string, bool, short, std::string>>
-PingManager::performPing(const std::map<std::string, std::string>& hosts, size_t maxConcurrent) {
+std::vector<PingResult> PingManager::performPing(const std::map<std::string, std::string>& hosts,
+                                                 size_t maxConcurrent) {
     auto allResults = performPingInternal(hosts, ConfigDefaults::FIRST_ROUND_PING_COUNT,
                                           ConfigDefaults::FIRST_ROUND_TIMEOUT, maxConcurrent);
 
     std::map<std::string, std::string> failedHosts;
-    for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
-        if (!success) {
-            failedHosts[ip] = hostname;
+    for (const auto& result : allResults) {
+        if (!result.success) {
+            failedHosts[result.ip] = result.hostname;
         }
     }
 
@@ -202,13 +228,15 @@ PingManager::performPing(const std::map<std::string, std::string>& hosts, size_t
         auto retryResults = performPingInternal(failedHosts, ConfigDefaults::RETRY_ROUND_PING_COUNT,
                                                 ConfigDefaults::RETRY_ROUND_TIMEOUT, maxConcurrent);
 
+        std::unordered_map<std::string, PingResult> retryMap;
+        retryMap.reserve(retryResults.size());
+        for (auto& r : retryResults) {
+            retryMap[r.ip] = std::move(r);
+        }
         for (auto& result : allResults) {
-            const std::string& ip = std::get<0>(result);
-            for (const auto& retry : retryResults) {
-                if (std::get<0>(retry) == ip) {
-                    result = retry;
-                    break;
-                }
+            auto it = retryMap.find(result.ip);
+            if (it != retryMap.end()) {
+                result = std::move(it->second);
             }
         }
     }

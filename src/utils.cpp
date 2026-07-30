@@ -51,7 +51,5 @@ std::map<std::string, std::string> readHostsFromFile(const std::string& filename
         }
     }
 
-    // 文件会在析构时自动关闭，但显式关闭是一个好习惯
-    file.close();
     return hosts;
 }

@@ -8,6 +8,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "statistics_printer.h"
+
 DatabaseManagerPG::DatabaseManagerPG(const std::string& connectionInfo)
     : connInfo(connectionInfo), conn(nullptr) {
     if (connectionInfo.empty()) {
@@ -432,9 +434,9 @@ bool DatabaseManagerPG::insertPingResults(
 
     // 验证所有IP地址格式
     if (success) {
-        for (const auto& [ip, _, __, ___, ____] : results) {
-            if (!isValidIP(ip)) {
-                std::println(std::cerr, "Invalid IP address format: {}", ip);
+        for (const auto& result : results) {
+            if (!isValidIP(std::get<0>(result))) {
+                std::println(std::cerr, "Invalid IP address format: {}", std::get<0>(result));
                 success = false;
                 break;
             }
@@ -465,10 +467,10 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
         std::println(std::cerr, "Database not initialized");
         return;
     }
-    printStatisticsHeader(ip, queryHostName(ip));
+    StatisticsPrinter::printHeader(ip, queryHostName(ip));
 
     auto stats = queryStatistics(ip);
-    printStatisticsBody(stats);
+    StatisticsPrinter::printBody(stats);
 
     if (stats.totalRecords > 0) {
         printRecentRecords(ip);
@@ -516,9 +518,9 @@ PingStatistics DatabaseManagerPG::queryStatistics(const std::string& ip) {
     if (PQntuples(res) > 0) {
         stats.totalRecords = std::atoi(PQgetvalue(res, 0, 0));
         stats.successCount = std::atoi(PQgetvalue(res, 0, 1));
-        stats.avgDelay     = PQgetvalue(res, 0, 2) ? std::atof(PQgetvalue(res, 0, 2)) : 0;
-        stats.maxDelay     = PQgetvalue(res, 0, 3) ? std::atoi(PQgetvalue(res, 0, 3)) : 0;
-        stats.minDelay     = PQgetvalue(res, 0, 4) ? std::atoi(PQgetvalue(res, 0, 4)) : 0;
+        stats.avgDelay     = PQgetisnull(res, 0, 2) ? 0.0 : std::atof(PQgetvalue(res, 0, 2));
+        stats.maxDelay     = PQgetisnull(res, 0, 3) ? 0 : std::atoi(PQgetvalue(res, 0, 3));
+        stats.minDelay     = PQgetisnull(res, 0, 4) ? 0 : std::atoi(PQgetvalue(res, 0, 4));
         stats.failureCount = stats.totalRecords - stats.successCount;
         if (stats.totalRecords > 0) {
             stats.successRate = (double)stats.successCount / stats.totalRecords * 100;
@@ -544,12 +546,13 @@ void DatabaseManagerPG::printRecentRecords(const std::string& ip) {
         return;
     }
 
-    printRecentRecordsHeader();
+    StatisticsPrinter::printRecentRecordsHeader();
     for (int i = 0; i < PQntuples(res); i++) {
         char* ts = PQgetvalue(res, i, 2);
         char* d  = PQgetvalue(res, i, 0);
         char* s  = PQgetvalue(res, i, 1);
-        printRecentRecordRow(ts ? ts : "N/A", d ? std::atoi(d) : 0, s && std::strcmp(s, "t") == 0);
+        StatisticsPrinter::printRecentRecordRow(ts ? ts : "N/A", d ? std::atoi(d) : 0,
+                                                s && std::strcmp(s, "t") == 0);
     }
     PQclear(res);
 }

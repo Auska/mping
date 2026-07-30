@@ -10,7 +10,8 @@
 namespace {
 
 bool isQueryModeEnabled(int val) {
-    return val >= 0 || val == ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
+    // -1 = disabled (default), -2 = enabled without days, >= 0 = enabled with days
+    return val != -1;
 }
 
 std::unique_ptr<Command> dispatchCommand(const ConfigManager::Config& config) {

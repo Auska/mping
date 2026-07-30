@@ -51,6 +51,7 @@ bool ConfigFile::parseLine(const std::string& line, std::string& currentSection)
         if (!currentSection.empty() && !key.empty()) {
             configData[currentSection][key] = value;
             originalEntries.push_back({currentSection, key, value});
+            knownEntries.insert({currentSection, key});
         }
     }
 
@@ -248,15 +249,9 @@ bool ConfigFile::getBool(const std::string& section, const std::string& key,
 
 void ConfigFile::set(const std::string& section, const std::string& key, const std::string& value) {
     configData[section][key] = value;
-    // 检查是否需要添加到 originalEntries
-    bool found = false;
-    for (const auto& entry : originalEntries) {
-        if (entry.section == section && entry.key == key) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
+    auto entryKey            = std::make_pair(section, key);
+    if (knownEntries.find(entryKey) == knownEntries.end()) {
+        knownEntries.insert(entryKey);
         originalEntries.push_back({section, key, value});
     }
 }
@@ -334,15 +329,16 @@ bool ConfigFile::removeSection(const std::string& section) {
 void ConfigFile::clear() {
     configData.clear();
     originalEntries.clear();
+    knownEntries.clear();
     loaded = false;
     filePath.clear();
 }
 
-bool ConfigFile::isLoaded() const {
+bool ConfigFile::isLoaded() const noexcept {
     return loaded;
 }
 
-std::string ConfigFile::getFilePath() const {
+std::string ConfigFile::getFilePath() const noexcept {
     return filePath;
 }
 

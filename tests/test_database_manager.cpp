@@ -35,7 +35,7 @@ TEST_CASE("DatabaseManager initialization", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
 
     // Create unique temp file
-    int fd = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -55,7 +55,7 @@ TEST_CASE("DatabaseManager initialization", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager ping result insertion", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -85,7 +85,7 @@ TEST_CASE("DatabaseManager ping result insertion", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager host management", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -114,7 +114,7 @@ TEST_CASE("DatabaseManager host management", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager alert management", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -149,7 +149,7 @@ TEST_CASE("DatabaseManager alert management", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager data cleanup", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -170,7 +170,7 @@ TEST_CASE("DatabaseManager data cleanup", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager queryIPStatistics", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -207,7 +207,7 @@ TEST_CASE("DatabaseManager queryIPStatistics", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager cleanupOldData", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -248,7 +248,7 @@ TEST_CASE("DatabaseManager cleanupOldData", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager getActiveAlerts", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -291,7 +291,7 @@ TEST_CASE("DatabaseManager getActiveAlerts", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager getRecoveryRecords", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -344,7 +344,7 @@ TEST_CASE("DatabaseManager getRecoveryRecords", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager alert management edge cases", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -377,7 +377,7 @@ TEST_CASE("DatabaseManager alert management edge cases", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager cleanupOldData clears all tables", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -442,7 +442,7 @@ TEST_CASE("DatabaseManager cleanupOldData clears all tables", "[database][sqlite
 
 TEST_CASE("DatabaseManager batch operations", "[database][sqlite]") {
     std::string testDb = "/tmp/test_mping_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -528,7 +528,7 @@ TEST_CASE("DatabaseFactory", "[database][factory]") {
 
 TEST_CASE("DatabaseManager alert lifecycle integration", "[database][sqlite][integration]") {
     std::string testDb = "/tmp/test_lifecycle_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -575,7 +575,7 @@ TEST_CASE("DatabaseManager alert lifecycle integration", "[database][sqlite][int
 
 TEST_CASE("DatabaseManager cleanupOldPingResults", "[database][sqlite]") {
     std::string testDb = "/tmp/test_cleanuppr_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -603,7 +603,7 @@ TEST_CASE("DatabaseManager cleanupOldPingResults", "[database][sqlite]") {
 
 TEST_CASE("DatabaseManager concurrent access", "[database][sqlite][concurrent]") {
     std::string testDb = "/tmp/test_concurrent_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 

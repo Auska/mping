@@ -14,7 +14,7 @@
 // 辅助函数：创建带数据的临时数据库
 static std::string createPopulatedDatabase() {
     std::string testDb = "/tmp/test_commands_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -45,7 +45,7 @@ static std::string createPopulatedDatabase() {
 
 TEST_CASE("Command creates database correctly", "[commands][base]") {
     std::string testDb = "/tmp/test_cmd_base_XXXXXX.db";
-    int fd             = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int fd             = mkstemps(testDb.data(), 3);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -213,7 +213,7 @@ TEST_CASE("PingCommand error handling", "[commands][ping]") {
 TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
     // 创建一个符合格式的主机文件
     std::string testFile = "/tmp/test_ping_hosts_XXXXXX.txt";
-    int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+    int fd               = mkstemps(testFile.data(), 4);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -235,7 +235,7 @@ TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
 
     SECTION("Executes ping with database enabled") {
         std::string testDb = "/tmp/test_ping_cmd_XXXXXX.db";
-        int dbFd           = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+        int dbFd           = mkstemps(testDb.data(), 3);
         REQUIRE(dbFd >= 0);
         close(dbFd);
 
@@ -261,7 +261,7 @@ TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
 
 TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
     std::string testFile = "/tmp/test_alert_hosts_XXXXXX.txt";
-    int fd               = mkstemps(const_cast<char*>(testFile.c_str()), 4);
+    int fd               = mkstemps(testFile.data(), 4);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -271,7 +271,7 @@ TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
     file.close();
 
     std::string testDb = "/tmp/test_alert_db_XXXXXX.db";
-    int dbFd           = mkstemps(const_cast<char*>(testDb.c_str()), 3);
+    int dbFd           = mkstemps(testDb.data(), 3);
     REQUIRE(dbFd >= 0);
     close(dbFd);
 

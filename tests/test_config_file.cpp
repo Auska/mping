@@ -12,7 +12,7 @@ TEST_CASE("ConfigFile basic operations", "[config_file]") {
         config.setBool("general", "silent", false);
 
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -24,7 +24,7 @@ TEST_CASE("ConfigFile basic operations", "[config_file]") {
 
     SECTION("Load config file") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -138,7 +138,7 @@ TEST_CASE("ConfigFile XDG paths", "[config_file][xdg]") {
 TEST_CASE("ConfigFile parsing", "[config_file]") {
     SECTION("Parse with comments") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -161,7 +161,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
     SECTION("Parse with quoted values") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -181,7 +181,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
     SECTION("Parse multiple sections") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -208,7 +208,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
     SECTION("Boolean parsing") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -240,7 +240,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
     SECTION("Parse with semicolon comments") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -259,7 +259,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
     SECTION("Parse with whitespace around values") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -277,7 +277,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
     SECTION("Empty file") {
         std::string testPath = "/tmp/test_config_XXXXXX.conf";
-        int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+        int fd               = mkstemps(testPath.data(), 5);
         REQUIRE(fd >= 0);
         close(fd);
 
@@ -304,7 +304,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
 TEST_CASE("ConfigFile atomic write — .tmp file cleanup", "[config_file][atomic]") {
     std::string testPath = "/tmp/test_atomic_XXXXXX.conf";
-    int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    int fd               = mkstemps(testPath.data(), 5);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -344,7 +344,7 @@ TEST_CASE("ConfigFile atomic write — .tmp file cleanup", "[config_file][atomic
 
 TEST_CASE("ConfigFile save/load roundtrip preserves all values", "[config_file][roundtrip]") {
     std::string testPath = "/tmp/test_roundtrip_XXXXXX.conf";
-    int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    int fd               = mkstemps(testPath.data(), 5);
     REQUIRE(fd >= 0);
     close(fd);
 
@@ -400,7 +400,7 @@ TEST_CASE("ConfigFile save/load roundtrip preserves all values", "[config_file][
 
 TEST_CASE("ConfigFile save preserves original path", "[config_file][save]") {
     std::string testPath = "/tmp/test_origpath_XXXXXX.conf";
-    int fd               = mkstemps(const_cast<char*>(testPath.c_str()), 5);
+    int fd               = mkstemps(testPath.data(), 5);
     REQUIRE(fd >= 0);
     close(fd);
 

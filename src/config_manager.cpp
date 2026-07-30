@@ -169,8 +169,20 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
             case 'C':
                 // 如果提供了参数，使用指定的值，否则默认为30天
                 config.enableDatabase = true;  // 清理功能需要启用数据库
-                config.cleanupDays =
-                    (optarg) ? std::stoi(optarg) : ConfigDefaults::DEFAULT_CLEANUP_DAYS;
+                if (optarg != nullptr) {
+                    try {
+                        config.cleanupDays = std::stoi(optarg);
+                        if (config.cleanupDays < 0) {
+                            std::println(std::cerr, "Cleanup days must be a non-negative integer.");
+                            return false;
+                        }
+                    } catch (const std::exception& e) {
+                        std::println(std::cerr, "Invalid value for cleanup days: {}", optarg);
+                        return false;
+                    }
+                } else {
+                    config.cleanupDays = ConfigDefaults::DEFAULT_CLEANUP_DAYS;
+                }
                 break;
             case 'c':
                 config.configFilePath = optarg;

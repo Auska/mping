@@ -4,7 +4,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
-#include <future>
 #include <map>
 #include <mutex>
 #include <queue>
@@ -13,6 +12,7 @@
 #include <tuple>
 #include <vector>
 
+#include "commands.h"
 #include "constants.h"
 
 class PingManager {
@@ -20,16 +20,16 @@ class PingManager {
     PingManager();
     ~PingManager();
 
-    std::vector<std::tuple<std::string, std::string, bool, short, std::string>> performPing(
+    std::vector<PingResult> performPing(
         const std::map<std::string, std::string>& hosts,
         size_t maxConcurrent = ConfigDefaults::MAX_CONCURRENT_PINGS);
 
    private:
     static const size_t DEFAULT_MAX_CONCURRENT = ConfigDefaults::MAX_CONCURRENT_PINGS;
 
-    std::vector<std::tuple<std::string, std::string, bool, short, std::string>> performPingInternal(
-        const std::map<std::string, std::string>& hosts, int pingCount, int timeoutSeconds,
-        size_t maxConcurrent);
+    std::vector<PingResult> performPingInternal(const std::map<std::string, std::string>& hosts,
+                                                int pingCount, int timeoutSeconds,
+                                                size_t maxConcurrent);
 
     // 可复用的线程池
     std::vector<std::jthread> workers;
@@ -39,6 +39,7 @@ class PingManager {
     std::atomic<bool> stop{false};
 
     void workerLoop();
+    void ensureThreadCount(size_t needed);
 };
 
 #endif  // PING_MANAGER_H

@@ -37,8 +37,8 @@ std::unique_ptr<DatabaseInterface> Command::createDatabase() {
     return DatabaseFactory::createDatabase(dbType, config.databasePath);
 }
 
-bool Command::initializeDatabase(DatabaseInterface* db) {
-    if (!db || !db->initialize()) {
+bool Command::initializeDatabase(DatabaseInterface& db) {
+    if (!db.initialize()) {
         std::println(std::cerr, "Failed to initialize database");
         return false;
     }
@@ -51,7 +51,7 @@ bool Command::initializeDatabase(DatabaseInterface* db) {
 
 int QueryIPCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(db.get())) {
+    if (!initializeDatabase(*db)) {
         return 1;
     }
     db->queryIPStatistics(config.queryIP);
@@ -64,7 +64,7 @@ int QueryIPCommand::execute() {
 
 int CleanupCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(db.get())) {
+    if (!initializeDatabase(*db)) {
         return 1;
     }
     db->cleanupOldData(config.cleanupDays);
@@ -77,7 +77,7 @@ int CleanupCommand::execute() {
 
 int QueryAlertsCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(db.get())) {
+    if (!initializeDatabase(*db)) {
         return 1;
     }
 
@@ -110,7 +110,7 @@ int QueryAlertsCommand::execute() {
 
 int QueryRecoveryCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(db.get())) {
+    if (!initializeDatabase(*db)) {
         return 1;
     }
 
@@ -154,8 +154,8 @@ bool PingCommand::insertPingResults(DatabaseInterface* db,
     std::vector<std::tuple<std::string, std::string, short, bool, std::string>> dbResults;
     dbResults.reserve(allResults.size());
 
-    for (const auto& [ip, hostname, result, delay, timestamp] : allResults) {
-        dbResults.emplace_back(ip, hostname, delay, result, timestamp);
+    for (const auto& r : allResults) {
+        dbResults.emplace_back(r.ip, r.hostname, r.delayMs, r.success, r.timestamp);
     }
 
     return db->insertPingResults(dbResults);
@@ -169,25 +169,25 @@ bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingRes
     // 预查当前在告警表中的 IP 列表
     auto activeAlertTuples = db->getActiveAlerts();
     std::unordered_set<std::string> alertIPs;
-    for (const auto& [ip, _, __] : activeAlertTuples) {
-        alertIPs.insert(ip);
+    for (const auto& alert : activeAlertTuples) {
+        alertIPs.insert(std::get<0>(alert));
     }
 
     // 只在实际状态变化时写入
     bool success = true;
-    for (const auto& [ip, hostname, successFlag, delay, timestamp] : allResults) {
-        bool isCurrentlyAlerted = alertIPs.count(ip) > 0;
+    for (const auto& r : allResults) {
+        bool isCurrentlyAlerted = alertIPs.count(r.ip) > 0;
 
-        if (!successFlag && !isCurrentlyAlerted) {
+        if (!r.success && !isCurrentlyAlerted) {
             // 刚刚不通，且之前没有告警 → 新增告警
-            if (!db->addAlert(ip, hostname)) {
-                std::println(std::cerr, "Failed to add alert for IP: {}", ip);
+            if (!db->addAlert(r.ip, r.hostname)) {
+                std::println(std::cerr, "Failed to add alert for IP: {}", r.ip);
                 success = false;
             }
-        } else if (successFlag && isCurrentlyAlerted) {
+        } else if (r.success && isCurrentlyAlerted) {
             // 刚刚恢复正常，且之前有告警 → 移除告警并记录恢复
-            if (!db->removeAlert(ip)) {
-                std::println(std::cerr, "Failed to remove alert for IP: {}", ip);
+            if (!db->removeAlert(r.ip)) {
+                std::println(std::cerr, "Failed to remove alert for IP: {}", r.ip);
                 success = false;
             }
         }
@@ -208,7 +208,7 @@ int PingCommand::execute() {
         hosts = readHostsFromFile(config.filename);
     } else if (config.enableDatabase) {
         auto db = createDatabase();
-        if (!initializeDatabase(db.get())) {
+        if (!initializeDatabase(*db)) {
             return 1;
         }
         hosts = db->getAllHosts();
@@ -228,7 +228,7 @@ int PingCommand::execute() {
     // 如果启用了数据库，则初始化数据库管理器并存储结果
     if (config.enableDatabase) {
         auto db = createDatabase();
-        if (!initializeDatabase(db.get())) {
+        if (!initializeDatabase(*db)) {
             return 1;
         }
 
@@ -248,9 +248,9 @@ int PingCommand::execute() {
 
     // 打印所有 IP 地址和结果（除非启用静默模式）
     if (!config.silentMode) {
-        for (const auto& [ip, hostname, success, delay, timestamp] : allResults) {
-            std::println(std::cout, "{}\t{}\t{}\t{}ms", ip, hostname,
-                         (success ? "success" : "failed"), delay);
+        for (const auto& r : allResults) {
+            std::println(std::cout, "{}\t{}\t{}\t{}ms", r.ip, r.hostname,
+                         (r.success ? "success" : "failed"), r.delayMs);
         }
     }
 
