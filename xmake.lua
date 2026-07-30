@@ -19,6 +19,7 @@ option_end()
 add_requires("sqlite3", {configs = {shared = false}, system = false})
 add_requires("libpq", {configs = {shared = false}, system = false})
 add_requires("catch2", {configs = {shared = false}, system = false})
+add_requires("fmt")
 
 local compile_time = os.date("%Y-%m-%d %H:%M:%S")
 local common_sources = {
@@ -58,6 +59,8 @@ target("mping")
         add_packages("sqlite3")
     end
 
+    add_packages("fmt")
+
     if is_plat("linux") then
         add_syslinks("pthread")
     end
@@ -84,12 +87,13 @@ if has_config("build_tests") then
         if has_config("use_postgresql") then
             add_files("src/database_manager_pg.cpp", "src/database_manager.cpp")
             add_defines("USE_POSTGRESQL=1", "USE_SQLITE=1")
-            add_packages("libpq", "sqlite3", "catch2")
+            add_packages("libpq", "sqlite3", "catch2", "fmt")
         else
             add_files("src/database_manager.cpp")
             add_defines("USE_SQLITE=1")
             add_packages("sqlite3")
             add_packages("catch2")
+            add_packages("fmt")
         end
 
         if is_plat("linux") then
