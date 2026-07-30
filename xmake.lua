@@ -17,7 +17,7 @@ option("build_tests")
 option_end()
 
 add_requires("sqlite3", {configs = {shared = false}, system = false})
-add_requires("libpq", {configs = {shared = false}, system = false})
+add_requires("libpq")
 add_requires("catch2", {configs = {shared = false}, system = false})
 add_requires("fmt")
 
