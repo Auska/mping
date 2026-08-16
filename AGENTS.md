@@ -3,26 +3,27 @@
 ## 快速参考
 
 ```bash
-# 构建（SQLite only, Release）
-xmake
+# 配置并构建（SQLite only, Release）
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 
 # 构建（含 PostgreSQL）
-xmake f --use_postgresql=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_USE_POSTGRESQL=ON
+cmake --build build -j
 
 # 构建（含测试）
-xmake f --build_tests=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON
+cmake --build build -j
 
 # 构建（含测试 + PostgreSQL）
-xmake f --build_tests=y --use_postgresql=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON -DMPING_USE_POSTGRESQL=ON
+cmake --build build -j
 
-# 交叉编译（x86_64-musl, /opt/x-tools）
-xmake f --use_cross=y && xmake
-
-# 运行全部测试
-xmake run mping_tests
+# 运行全部测试（CTest）
+ctest --test-dir build
 
 # 运行单个测试（带详细输出）
-xmake run mping_tests "[test_case_name]" -s
+./build/mping_tests "[test_case_name]" -s
 
 # 格式化代码
 clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
@@ -31,21 +32,19 @@ clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
 for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
 
 # 安装到系统（需 root）
-sudo xmake install
-clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
-
-# 检查格式化（逐文件对比）
-for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
+sudo cmake --install build
 
 ```
 
 ## 项目概述
+
 mping 是一个命令行工具，用于同时检查多个主机的连接性。它从文件中读取 IP 地址和主机名列表，并并发执行 ping 操作。该工具还提供数据库日志记录和查询功能以分析 ping 结果。
 
 **当前版本**: 1.1.0  
-**项目主页**: https://github.com/Auska/mping
+**项目主页**: <https://github.com/Auska/mping>
 
 ## 架构设计
+
 - **模块化设计**：分离关注点，各模块职责明确
 - **命令模式**：`commands.h`/`commands.cpp` 定义了 Command 抽象基类和 5 个子命令
   - `QueryIPCommand`：查询 IP 统计
@@ -87,6 +86,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 ```
 
 ### 命令模式优势
+
 - **降低耦合**：每种操作模式封装为独立命令类
 - **简化测试**：命令类可以独立测试
 - **降低复杂度**：`main()` 圈复杂度从 30 降至 5
@@ -109,10 +109,12 @@ DatabaseManager        DatabaseManagerPG
 ### 条件编译
 
 代码中使用 `#ifdef USE_POSTGRESQL` / `#ifdef USE_SQLITE` 宏进行条件编译。两个宏**独立检测**，可同时定义（测试目标）以支持两种后端。添加新数据库支持时需要修改：
+
 - `database_factory.cpp`：添加新的 `DatabaseType` 枚举值和创建逻辑
-- `xmake.lua`：添加编译选项、依赖查找和源文件
+- `CMakeLists.txt`：添加编译选项、依赖查找和源文件
 
 ## 编程规范
+
 1. **使用 C++23 标准实现**：利用现代 C++ 特性和性能优化
 2. **commit 必须使用英文**：提交信息应清晰描述变更内容
 3. **使用面向对象方式实现**：采用封装、继承、多态等 OOP 原则
@@ -120,11 +122,12 @@ DatabaseManager        DatabaseManagerPG
 5. **遵循工厂模式**：使用 DatabaseFactory 创建数据库实例
 6. **使用现代 C++ 特性**：如 `std::println`、智能指针、移动语义等
 7. **线程安全**：使用互斥锁和条件变量确保线程安全
-8. **使用 Catch2 v3 进行单元测试**：测试框架使用 Catch2 v3.5.0
+8. **使用 Catch2 v3 进行单元测试**：测试框架使用 Catch2 v3
 9. **代码格式化**：使用 clang-format 保持代码风格一致（Google 风格基础）
 10. **PostgreSQL 时间列必须使用 TIMESTAMPTZ**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区）。`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换。新增迁移逻辑时，需在 `migrateSchema()` 中处理列类型转换
 
 ### 代码格式化规范
+
 项目使用 `.clang-format` 配置文件定义代码风格标准：
 
 ```bash
@@ -133,6 +136,7 @@ clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
 ```
 
 **主要格式化规则**：
+
 - 缩进：4 空格，不使用 Tab
 - 括号风格：K&R 风格（左大括号不换行）
 - 行宽限制：100 字符
@@ -142,21 +146,25 @@ clang-format -i -style=file src/*.cpp src/*.h tests/*.cpp
 - 短函数可放在单行（inline only）
 
 ### 格式化检查
+
 ```bash
 # 检查是否需要格式化（逐文件对比，不修改文件）
 for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff - "$f"; done
 ```
 
-### xmake.lua 规范
-遵循 xmake-style 规范：
-- **声明式配置**：`target()` / `option()` 内部仅使用 `set_` / `add_` 声明式调用，复杂逻辑放到 `on_load` 或独立脚本
-- **`add_requires` 集中到文件顶部**：所有依赖包在 root scope 统一声明，不分散到 target 内部
-- **`_end()` 按需使用**：`target_end()` / `option_end()` 不需要显式调用（除非条件 target 导致嵌套），xmake 通过下一个顶层调用自动闭合
+### CMakeLists.txt 规范
+
+遵循 CMake 风格规范：
+
+- **声明式配置**：`add_executable()` / `target_*()` 内部仅使用声明式调用，复杂逻辑放到函数或 `if()` 分支
+- **`find_package()` 集中到文件顶部**：依赖查找统一声明，不分散到分支内部
+- **target 属性使用 `target_*()` 命令**：使用 `target_include_directories` / `target_compile_definitions` / `target_link_libraries`，避免全局 `include_directories()` / `add_definitions()`
 - **缩进 4 空格**：无 Tab
-- **依赖通过 xrepo 管理**：使用 `add_packages("sqlite3")` 而非 `add_syslinks("sqlite3")`，路径和标志由 xrepo 自动处理
-- **平台条件使用 `is_plat`**：避免手动检测 `os.host()`
+- **选项使用 `option()`**：`MPING_USE_POSTGRESQL` / `MPING_BUILD_TESTS` 通过 `-D` 传递
+- **平台条件使用 `if(WIN32)` / `if(UNIX)`**：避免手动检测编译器
 
 ## 项目特性
+
 - 并发 ping 多个主机以获得更快的结果（默认最大并发数 50）
 - 从文件读取 IP 地址和主机名
 - 显示所有主机的状态和响应时间
@@ -169,7 +177,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - 数据自动清理功能
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
-- 支持通过 `xmake install` 安装到系统
+- 支持通过 `cmake --install` 安装到系统
 - **配置文件支持**：遵循 XDG 规范的配置文件管理
   - 支持 INI 格式配置文件
   - 自动从 XDG 配置目录加载配置
@@ -177,53 +185,58 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
   - 支持保存当前配置到文件
 
 ## 构建系统
-- **Xmake**：使用 Xmake 作为构建系统
+
+- **CMake**：使用 CMake（>= 3.16）作为构建系统
 - **C++23 标准**（必需）
-- **依赖管理**：通过 xrepo（Xmake 内置包管理器）自动下载，无需手动安装系统开发库
+- **依赖管理**：通过 `find_package` 查找系统开发库（SQLite3、libpq、Catch2、Threads）
 - **支持构建类型**：Release（默认）和 Debug
-- **编译选项**：
-  - `--use_postgresql=y`：启用 PostgreSQL 支持
-  - `--build_tests=y`：编译测试程序
-  - `-m debug`：调试版本构建
-- **安装支持**：支持通过 `xmake install` 安装到系统
+- **编译选项**（通过 `-D` 传递）：
+  - `MPING_USE_POSTGRESQL=ON`：启用 PostgreSQL 支持
+  - `MPING_BUILD_TESTS=ON`：编译测试程序
+  - `-DCMAKE_BUILD_TYPE=Debug`：调试版本构建
+- **安装支持**：支持通过 `cmake --install` 安装到系统
 
 ### 构建命令
+
 ```bash
 # 仅启用 SQLite（默认）
-xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 
 # 启用 PostgreSQL 支持
-xmake f --use_postgresql=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_USE_POSTGRESQL=ON
+cmake --build build -j
 
 # 调试版本构建
-xmake f -m debug && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
 
 # 安装到系统（需要 root 权限）
-sudo xmake install
+sudo cmake --install build
 ```
 
 ### 构建优化
+
 - **Release 模式**：`-O3 -DNDEBUG` 优化标志
 - **Debug 模式**：`-g -O0` 调试标志
-- **并行编译**：Xmake 自动使用多核编译
+- **并行编译**：`cmake --build -j` 自动使用多核编译
 
 ## 依赖项
+
 - **C++23 兼容编译器**（GCC 13+、Clang 16+ 或 MSVC 2022+）
-- **Xmake**（内置 xrepo 包管理器，自动处理所有 C/C++ 依赖）
+- **CMake 3.16+**
 - **线程库**（pthread，系统内置）
+- SQLite3、libpq、Catch2 开发库（通过系统包管理器安装）
 
-所有第三方依赖（SQLite3、libpq、Catch2）均由 xrepo 在构建时自动下载和编译，**无需手动安装系统开发库**。xmake.lua 中使用 `add_requires` 声明依赖，`add_packages` 在目标中引用：
+第三方依赖通过 `find_package` 查找系统安装的开发库，CMakeLists.txt 中使用 imported target 进行链接：
 
-```lua
-add_requires("sqlite3")
-add_requires("libpq")
-add_requires("catch2")
-
-target("mping")
-    add_packages("sqlite3")  -- 或 add_packages("libpq")
+```cmake
+find_package(SQLite3 REQUIRED)
+target_link_libraries(mping PRIVATE SQLite::SQLite3)
 ```
 
 ## 命令行选项
+
 - `-h`, `--help`: 显示帮助信息
 - `-v`, `--version`: 显示版本信息
 - `-d`, `--database`: 启用数据库日志记录并指定数据库路径/连接字符串
@@ -240,18 +253,23 @@ target("mping")
 > **注意**：PostgreSQL 支持通过连接字符串自动检测。当数据库路径包含 `host=` 时，将自动识别为 PostgreSQL 连接字符串。
 
 ## 文件格式
+
 输入文件应包含以下格式的行：
+
 ```
 # ip            hostname
 10.224.1.11     test1
 10.224.1.12     test2
 ```
+
 以 `#` 开头的行被视为注释并忽略。
 
 ## 配置文件
+
 mping 支持遵循 XDG 规范的配置文件，使用 INI 格式。
 
 ### 配置文件搜索路径（按优先级）
+
 1. `$XDG_CONFIG_HOME/mping/config`
 2. `$XDG_CONFIG_DIRS/mping/config`
 3. `~/.config/mping/config`
@@ -260,6 +278,7 @@ mping 支持遵循 XDG 规范的配置文件，使用 INI 格式。
 6. `./.mpingrc`
 
 ### 配置文件格式
+
 ```ini
 [general]
 # 启用数据库日志记录
@@ -276,10 +295,13 @@ cleanup_days = 30
 ```
 
 ### 配置文件优先级
+
 命令行选项的优先级高于配置文件。配置文件中的设置会被命令行选项覆盖。
 
 ### 保存配置
+
 使用 `-S` 或 `--save-config` 选项保存当前配置：
+
 ```bash
 # 保存到默认路径（$XDG_CONFIG_HOME/mping/config）
 mping -S
@@ -289,13 +311,16 @@ mping -S /path/to/config.conf
 ```
 
 ## 数据库架构
+
 - **`hosts` 表**：存储 IP 地址和主机名及创建和最后访问时间戳
 - **`ping_results` 表**：统一存储所有 ping 结果（IP、主机名、延迟、成功状态和时间戳）
 - **`alerts` 表**：跟踪主机状态告警
 - **`recovery_records` 表**：记录主机从故障中恢复的信息
 
 ### 数据清理
+
 `-C` / `--cleanup` 命令清理以下表中的旧数据：
+
 - **`ping_results`**：删除超过指定天数的记录
 - **`alerts`**：删除超过指定天数的告警记录
 - **`recovery_records`**：删除超过指定天数的恢复记录
@@ -303,9 +328,11 @@ mping -S /path/to/config.conf
 > **注意**：`hosts` 表不会被清理，以保留主机列表信息。
 
 ## 测试
+
 项目使用 Catch2 v3.5.0 测试框架进行单元测试。
 
 ### 测试文件
+
 - **`tests/test_main.cpp`**：测试入口，定义 `CATCH_CONFIG_MAIN`
 - **`tests/test_commands.cpp`**：命令模式测试（所有 5 个命令）
 - **`tests/test_database_manager.cpp`**：数据库管理器功能测试（含告警生命周期、并发访问）
@@ -320,24 +347,27 @@ mping -S /path/to/config.conf
 > **注意**：启用 PostgreSQL 时，测试程序会同时链接 SQLite 和 PostgreSQL 数据库管理器，以便进行跨数据库测试。`database_factory.cpp` 使用独立检测的 `USE_SQLITE` / `USE_POSTGRESQL` 宏，两个后端可同时编译。
 
 ### 运行测试
+
 ```bash
 # 编译测试程序
-xmake f --build_tests=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON
+cmake --build build -j
 
-# 运行所有测试
-xmake run mping_tests
+# 运行所有测试（CTest）
+ctest --test-dir build
 
 # 运行特定测试（使用 Catch2 过滤器）
-xmake run mping_tests "[test_case_name]"
+./build/mping_tests "[test_case_name]"
 
 # 显示详细测试输出
-xmake run mping_tests -s
+./build/mping_tests -s
 
 # 列出所有测试用例
-xmake run mping_tests --list-tests
+./build/mping_tests --list-tests
 ```
 
 ## 开发实践
+
 - **代码格式化**：使用 clang-format 保持代码风格一致（Google 风格基础）
 - **并发设计**：使用线程池和异步操作以提高性能
 - **错误处理**：全面的异常处理和错误报告机制
@@ -355,11 +385,13 @@ xmake run mping_tests --list-tests
 ## 数据库连接字符串格式
 
 ### SQLite
+
 ```
 /path/to/database.db
 ```
 
 ### PostgreSQL
+
 ```
 host=localhost user=myuser password=mypass dbname=mydb
 ```
@@ -367,25 +399,31 @@ host=localhost user=myuser password=mypass dbname=mydb
 > **自动检测**：程序会自动根据连接字符串判断数据库类型。如果路径包含 `host=` 关键字，则识别为 PostgreSQL 连接。
 
 ### PostgreSQL 可选参数
+
 - `client_min_messages=warning`：抑制 NOTICE 消息
 - `port=5432`：指定端口
 - `sslmode=require`：启用 SSL
 
 ## 安装
+
 ```bash
 # 编译项目
-xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 
 # 安装到系统（需要 root 权限）
-sudo xmake install
+sudo cmake --install build
 ```
 
 安装后，可执行文件将位于：
+
 - 默认安装路径：`/usr/local/bin/mping`
 - 自定义安装路径：`$CMAKE_INSTALL_PREFIX/bin/mping`
 
 ## 版本信息
-项目版本信息通过 xmake 编译定义传递：
+
+项目版本信息通过 CMake 编译定义传递（由 `project()` 元数据自动生成）：
+
 - `PROJECT_NAME`：项目名称
 - `PROJECT_VERSION`：主版本号
 - `PROJECT_VERSION_MAJOR`：主版本号

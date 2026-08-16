@@ -11,9 +11,6 @@ IFLOW.md
 *.swp
 *.swo
 
-# Xmake
-.xmake/
-
 # LSP
 compile_commands.json
 .cache/

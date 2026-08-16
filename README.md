@@ -3,6 +3,7 @@
 mping is a command-line tool for checking the connectivity of multiple hosts simultaneously. It reads a list of IP addresses and hostnames from a file and performs ping operations on them concurrently. The tool also provides database logging and query capabilities to analyze ping results.
 
 The project follows a command-pattern architecture with modular design:
+
 - `main.cpp`: Argument parsing and command dispatch (~50 lines)
 - `commands.h`/`commands.cpp`: Command abstraction and 5 sub-commands (QueryIP, Cleanup, QueryAlerts, QueryRecovery, Ping)
 - `utils.cpp`/`utils.h`: Utility functions for file operations
@@ -64,27 +65,31 @@ Lines starting with `#` are treated as comments and ignored.
 
 To build mping, you need:
 
-- Xmake
+- CMake 3.16+
 - A C++23 compatible compiler (GCC 13+, Clang 16+, MSVC 2022+)
 - SQLite3 development libraries
 - PostgreSQL development libraries (optional, for PostgreSQL support)
+- Catch2 v3 (optional, for building tests)
 
 ```bash
-# For SQLite only support
-xmake
+# Configure and build (SQLite only support)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 
 # For PostgreSQL support
-xmake f --use_postgresql=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_USE_POSTGRESQL=ON
+cmake --build build -j
 
 # Build with tests
-xmake f --build_tests=y && xmake
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON
+cmake --build build -j
 
-# Run all tests
-xmake run mping_tests
+# Run all tests (via CTest)
+ctest --test-dir build
 
 # Run specific tests
-xmake run mping_tests "[commands]"
-xmake run mping_tests --list-tests
+./build/mping_tests "[commands]"
+./build/mping_tests --list-tests
 ```
 
 ## Example
@@ -130,8 +135,6 @@ xmake run mping_tests --list-tests
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -q 10.224.1.11
 ```
 
-
-
 ## Database Schema
 
 The tool creates four tables:
@@ -140,4 +143,3 @@ The tool creates four tables:
 2. `ping_results` table: Unified table storing all ping results (IP, hostname, delay, success status, timestamp)
 3. `alerts` table: Tracks host down-alerts with creation time
 4. `recovery_records` table: Records when hosts recover from alert state
-
