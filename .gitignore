@@ -14,6 +14,7 @@ IFLOW.md
 # LSP
 compile_commands.json
 .cache/
+.pi/
 
 # CMake files
 CMakeCache.txt
