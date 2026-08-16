@@ -9,12 +9,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <print>
 #include <ranges>
 #include <sstream>
-#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
