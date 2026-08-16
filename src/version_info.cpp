@@ -15,8 +15,6 @@ void print_version_info() {
 #ifdef __GNUC__
     std::println(std::cout, "Compiler: GCC {}.{}.{}", __GNUC__, __GNUC_MINOR__,
                  __GNUC_PATCHLEVEL__);
-#elif defined(_MSC_VER)
-    std::println(std::cout, "Compiler: MSVC {}", _MSC_VER);
 #elif defined(__clang__)
     std::println(std::cout, "Compiler: Clang {}.{}.{}", __clang_major__, __clang_minor__,
                  __clang_patchlevel__);
@@ -32,11 +30,7 @@ void print_version_info() {
 #endif
 
     // 显示平台信息
-#ifdef _WIN32
-    std::println(std::cout, "Platform: Windows 32-bit");
-#elif defined(_WIN64)
-    std::println(std::cout, "Platform: Windows 64-bit");
-#elif defined(__linux__)
+#ifdef __linux__
     std::println(std::cout, "Platform: Linux");
 #elif defined(__APPLE__)
     std::println(std::cout, "Platform: macOS");

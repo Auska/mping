@@ -24,11 +24,7 @@
 namespace {
 
 bool hasRawSocketCapability() {
-#ifdef _WIN32
-    return false;
-#else
     return geteuid() == 0;
-#endif
 }
 
 std::string getCurrentTimestamp() {

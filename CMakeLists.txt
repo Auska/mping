@@ -6,6 +6,11 @@ project(mping
     HOMEPAGE_URL "https://github.com/Auska/mping"
     LANGUAGES CXX)
 
+# Windows is not supported
+if(WIN32)
+    message(FATAL_ERROR "mping does not support Windows: POSIX (Linux/macOS/BSD) required")
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -20,11 +25,7 @@ endif()
 option(MPING_USE_POSTGRESQL "Use PostgreSQL database backend (default is SQLite)" OFF)
 option(MPING_BUILD_TESTS "Build the mping test programs" OFF)
 
-if(MSVC)
-    add_compile_options(/W4)
-else()
-    add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
+add_compile_options(-Wall -Wextra -Wpedantic)
 
 # UTC compile timestamp, injected as a macro (see src/version_info.cpp)
 string(TIMESTAMP MPING_COMPILE_TIME "%Y-%m-%d %H:%M:%S" UTC)

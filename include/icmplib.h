@@ -8,16 +8,10 @@
 #define ICMPLIB_RECV_BUFFER_SIZE 1024
 #endif
 
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
-
 #include <chrono>
 #include <string>
 #include <thread>
 #include <regex>
-#ifdef _WIN32
-#define _WIN32_WINNT 0x0601
-#include <ws2tcpip.h>
-#else
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -25,7 +19,6 @@
 #include <netdb.h>
 #include <cstring>
 #include <climits>
-#endif
 
 #define ICMPLIB_ICMP_ECHO_RESPONSE 0
 #define ICMPLIB_ICMP_DESTINATION_UNREACHABLE 3
@@ -43,51 +36,12 @@
 
 #define ICMPLIB_TIMEOUT_1S 1000
 
-#ifdef _WIN32
-#define ICMPLIB_SOCKET SOCKET
-#define ICMPLIB_SOCKLEN int
-#define ICMPLIB_SOCKET_ERROR SOCKET_ERROR
-#define ICMPLIB_CLOSESOCKET closesocket
-#else
 #define ICMPLIB_SOCKET int
 #define ICMPLIB_SOCKLEN socklen_t
 #define ICMPLIB_SOCKET_ERROR -1
 #define ICMPLIB_CLOSESOCKET close
-#endif
-
-#if (defined _WIN32 && defined _MSC_VER)
-#pragma comment(lib, "ws2_32.lib")
-#endif
 
 namespace icmplib {
-#ifdef _WIN32
-    class WinSock {
-    public:
-        WinSock(const WinSock &) = delete;
-        WinSock(WinSock &&) = delete;
-        virtual ~WinSock() {
-            WSACleanup();
-        }
-        WinSock &operator=(const WinSock &) = delete;
-        static WinSock &Initialize() {
-            static WinSock instance;
-            return instance;
-        }
-    private:
-        WinSock() {
-            WSADATA wsaData;
-            int error = WSAStartup(MAKEWORD(2, 2), &wsaData);
-            if (error != NO_ERROR) {
-                throw std::runtime_error("Cannot initialize WinSock!");
-            }
-            if ((LOBYTE(wsaData.wVersion) != 2) || (HIBYTE(wsaData.wVersion) != 2)) {
-                WSACleanup();
-                throw std::runtime_error("Cannot initialize WinSock!");
-            }
-        }
-    };
-
-#endif
     class IPAddress {
     public:
         enum class Type {
@@ -186,9 +140,6 @@ namespace icmplib {
             return *this;
         }
         IPAddress &Resolve(const std::string &address, Type type = Type::IPv4) {
-#ifdef _WIN32
-            WinSock::Initialize();
-#endif
             addrinfo hints;
             std::memset(&hints, 0, sizeof(addrinfo));
             hints.ai_family = AF_UNSPEC;
@@ -330,9 +281,6 @@ namespace icmplib {
         static Result Execute(const IPAddress &target, unsigned timeout = ICMPLIB_TIMEOUT_1S, uint16_t sequence = 1, uint8_t ttl = 255) {
             Result result = { Result::ResponseType::Timeout, static_cast<double>(timeout), IPAddress(), 0, 0 };
             try {
-#ifdef _WIN32
-                WinSock::Initialize();
-#endif
                 ICMPSocket sock(target.GetType(), ttl);
 
                 ICMPRequest request(target.GetType(), sequence);
@@ -394,11 +342,7 @@ namespace icmplib {
                 }
 
                 sock = socket(IPAddress::GetFamily(type), SOCK_RAW, protocol);
-#ifdef _WIN32
-                if (sock == INVALID_SOCKET) {
-#else
                 if (sock <= 0) {
-#endif
                     throw std::runtime_error("Cannot initialize socket!");
                 }
 
@@ -417,13 +361,8 @@ namespace icmplib {
                     }
                 }
 
-#ifdef _WIN32
-                unsigned long mode = 1;
-                if (ioctlsocket(sock, FIONBIO, &mode) != NO_ERROR) {
-#else
                 int flags = fcntl(sock, F_GETFL, 0);
                 if ((flags == -1) || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
-#endif
                     ICMPLIB_CLOSESOCKET(sock);
                     throw std::runtime_error("Cannot set socket options!");
                 }

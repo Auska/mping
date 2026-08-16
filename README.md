@@ -63,10 +63,12 @@ Lines starting with `#` are treated as comments and ignored.
 
 ## Building
 
+mping supports POSIX platforms only (Linux, macOS, BSD) — Windows is not supported.
+
 To build mping, you need:
 
 - CMake 3.16+
-- A C++23 compatible compiler (GCC 13+, Clang 16+, MSVC 2022+)
+- A C++23 compatible compiler (GCC 13+, Clang 16+)
 - SQLite3 development libraries
 - PostgreSQL development libraries (optional, for PostgreSQL support)
 - Catch2 v3 (optional, for building tests)

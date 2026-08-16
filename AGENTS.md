@@ -161,7 +161,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - **target 属性使用 `target_*()` 命令**：使用 `target_include_directories` / `target_compile_definitions` / `target_link_libraries`，避免全局 `include_directories()` / `add_definitions()`
 - **缩进 4 空格**：无 Tab
 - **选项使用 `option()`**：`MPING_USE_POSTGRESQL` / `MPING_BUILD_TESTS` 通过 `-D` 传递
-- **平台条件使用 `if(WIN32)` / `if(UNIX)`**：避免手动检测编译器
+- **仅支持 POSIX 平台**：Windows 不支持，CMake 配置阶段用 `if(WIN32)` 直接拒绝；其余平台条件使用 `if(UNIX)`，避免手动检测编译器
 
 ## 项目特性
 
@@ -223,7 +223,7 @@ sudo cmake --install build
 
 ## 依赖项
 
-- **C++23 兼容编译器**（GCC 13+、Clang 16+ 或 MSVC 2022+）
+- **C++23 兼容编译器**（GCC 13+ 或 Clang 16+；不支持 MSVC/Windows）
 - **CMake 3.16+**
 - **线程库**（pthread，系统内置）
 - SQLite3、libpq、Catch2 开发库（通过系统包管理器安装）

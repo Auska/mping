@@ -79,12 +79,6 @@ TEST_CASE("VersionInfo compiler detection", "[version]") {
         REQUIRE(output.find("Clang") != std::string::npos);
 #endif
     }
-
-    SECTION("Detects MSVC compiler") {
-#ifdef _MSC_VER
-        REQUIRE(output.find("MSVC") != std::string::npos);
-#endif
-    }
 }
 
 TEST_CASE("VersionInfo platform detection", "[version]") {
@@ -99,12 +93,6 @@ TEST_CASE("VersionInfo platform detection", "[version]") {
     SECTION("Detects macOS platform") {
 #ifdef __APPLE__
         REQUIRE(output.find("macOS") != std::string::npos);
-#endif
-    }
-
-    SECTION("Detects Windows platform") {
-#if defined(_WIN32) || defined(_WIN64)
-        REQUIRE(output.find("Windows") != std::string::npos);
 #endif
     }
 
