@@ -25,6 +25,7 @@ The project follows a command-pattern architecture with modular design:
 - Alert tracking with automatic recovery recording
 - Config file support (XDG-compliant, INI format)
 - Two-round ping strategy (1 fast packet, retry with 5 packets to reduce false positives)
+- Pre-alert confirmation: first-time failures are retried 3 times before an alert is raised (avoids false alerts from transient failures)
 
 ## Usage
 

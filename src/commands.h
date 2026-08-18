@@ -9,6 +9,7 @@
 #include "config_manager.h"
 
 class DatabaseInterface;
+class PingManager;
 
 /**
  * @brief 命令抽象基类
@@ -82,6 +83,9 @@ class PingCommand : public Command {
    private:
     bool insertPingResults(DatabaseInterface* db, const std::vector<PingResult>& allResults);
     bool processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults);
+    // 对首次不通且未告警的主机重试确认，避免瞬时故障误报告警
+    bool confirmFailuresWithRetry(PingManager& pingManager, std::vector<PingResult>& allResults,
+                                  DatabaseInterface* db);
 };
 
 #endif  // COMMANDS_H

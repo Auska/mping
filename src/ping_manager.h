@@ -24,6 +24,12 @@ class PingManager {
         const std::map<std::string, std::string>& hosts,
         size_t maxConcurrent = ConfigDefaults::MAX_CONCURRENT_PINGS);
 
+    // 对指定主机执行多轮重试确认：任一轮成功即停止该主机的重试，
+    // 返回每台主机的最终检查结果（全部重试轮次结束后）
+    std::vector<PingResult> retryHosts(const std::map<std::string, std::string>& hosts,
+                                       int retryCount,
+                                       size_t maxConcurrent = ConfigDefaults::MAX_CONCURRENT_PINGS);
+
    private:
     static const size_t DEFAULT_MAX_CONCURRENT = ConfigDefaults::MAX_CONCURRENT_PINGS;
 

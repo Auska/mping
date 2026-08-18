@@ -239,3 +239,34 @@ std::vector<PingResult> PingManager::performPing(const std::map<std::string, std
 
     return allResults;
 }
+
+std::vector<PingResult> PingManager::retryHosts(const std::map<std::string, std::string>& hosts,
+                                                int retryCount, size_t maxConcurrent) {
+    std::vector<PingResult> results;
+    if (hosts.empty() || retryCount <= 0) {
+        return results;
+    }
+
+    std::map<std::string, std::string> pending = hosts;
+    std::unordered_map<std::string, PingResult> finalResults;
+    finalResults.reserve(hosts.size());
+
+    // 每轮并行检查仍处于失败状态的主机；某主机任一轮成功即停止其重试
+    for (int round = 0; round < retryCount && !pending.empty(); ++round) {
+        auto roundResults = performPingInternal(pending, ConfigDefaults::RETRY_ROUND_PING_COUNT,
+                                                ConfigDefaults::RETRY_ROUND_TIMEOUT, maxConcurrent);
+        for (auto& r : roundResults) {
+            bool success       = r.success;
+            finalResults[r.ip] = std::move(r);
+            if (success) {
+                pending.erase(r.ip);
+            }
+        }
+    }
+
+    results.reserve(finalResults.size());
+    for (auto& [ip, result] : finalResults) {
+        results.push_back(std::move(result));
+    }
+    return results;
+}

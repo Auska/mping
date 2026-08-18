@@ -104,6 +104,59 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
     }
 }
 
+TEST_CASE("PingManager retryHosts confirmation", "[ping][retry]") {
+    PingManager pingManager;
+
+    SECTION("Empty hosts list returns empty") {
+        std::map<std::string, std::string> hosts;
+        auto results = pingManager.retryHosts(hosts, 3, 1);
+        REQUIRE(results.empty());
+    }
+
+    SECTION("Non-positive retry count returns empty") {
+        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
+        auto results                             = pingManager.retryHosts(hosts, 0, 1);
+        REQUIRE(results.empty());
+    }
+
+    SECTION("Reachable host succeeds within one round") {
+        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
+        auto results                             = pingManager.retryHosts(hosts, 3, 1);
+        REQUIRE(results.size() == 1);
+        REQUIRE(results[0].ip == "127.0.0.1");
+        REQUIRE(results[0].success);
+    }
+
+    SECTION("Unreachable host stays failed after all rounds") {
+        std::map<std::string, std::string> hosts = {
+            {"192.0.2.1", "invalid-host"}  // TEST-NET-1, should be unreachable
+        };
+        auto results = pingManager.retryHosts(hosts, 1, 1);
+        REQUIRE(results.size() == 1);
+        REQUIRE(results[0].success == false);
+    }
+
+    SECTION("Mixed hosts: reachable recovers, unreachable stays failed") {
+        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"},
+                                                    {"192.0.2.1", "invalid-host"}};
+        auto results                             = pingManager.retryHosts(hosts, 1, 2);
+        REQUIRE(results.size() == 2);
+        bool reachableSeen   = false;
+        bool unreachableSeen = false;
+        for (const auto& r : results) {
+            if (r.ip == "127.0.0.1") {
+                REQUIRE(r.success);
+                reachableSeen = true;
+            } else if (r.ip == "192.0.2.1") {
+                REQUIRE(r.success == false);
+                unreachableSeen = true;
+            }
+        }
+        REQUIRE(reachableSeen);
+        REQUIRE(unreachableSeen);
+    }
+}
+
 TEST_CASE("PingManager performance", "[ping][performance]") {
     PingManager pingManager;
 

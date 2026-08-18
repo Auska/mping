@@ -161,6 +161,57 @@ bool PingCommand::insertPingResults(DatabaseInterface* db,
     return db->insertPingResults(dbResults);
 }
 
+bool PingCommand::confirmFailuresWithRetry(PingManager& pingManager,
+                                           std::vector<PingResult>& allResults,
+                                           DatabaseInterface* db) {
+    if (!db) {
+        return false;
+    }
+
+    // 预查当前在告警表中的 IP 列表（已告警主机处于持续故障，无需重复确认）
+    auto activeAlertTuples = db->getActiveAlerts();
+    std::unordered_set<std::string> alertIPs;
+    for (const auto& alert : activeAlertTuples) {
+        alertIPs.insert(std::get<0>(alert));
+    }
+
+    // 收集首次检查不通且未告警的主机
+    std::map<std::string, std::string> pendingHosts;
+    for (const auto& r : allResults) {
+        if (!r.success && alertIPs.count(r.ip) == 0) {
+            pendingHosts[r.ip] = r.hostname;
+        }
+    }
+
+    if (pendingHosts.empty()) {
+        return true;
+    }
+
+    if (!config.silentMode) {
+        std::println(std::cout,
+                     "Retrying {} unreachable host(s) {} time(s) to confirm before alerting...",
+                     pendingHosts.size(), ConfigDefaults::ALERT_CONFIRM_RETRY_COUNT);
+    }
+
+    auto retryResults =
+        pingManager.retryHosts(pendingHosts, ConfigDefaults::ALERT_CONFIRM_RETRY_COUNT);
+
+    // 用重试确认的结果更新输出：仅当重试成功时覆盖为成功状态
+    for (const auto& rr : retryResults) {
+        if (!rr.success) {
+            continue;
+        }
+        for (auto& r : allResults) {
+            if (r.ip == rr.ip) {
+                r = rr;
+                break;
+            }
+        }
+    }
+
+    return true;
+}
+
 bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults) {
     if (!db) {
         return false;
@@ -229,6 +280,11 @@ int PingCommand::execute() {
     if (config.enableDatabase) {
         auto db = createDatabase();
         if (!initializeDatabase(*db)) {
+            return 1;
+        }
+
+        // 首次不通且未告警的主机，先重试确认再决定是否告警（避免误报）
+        if (!confirmFailuresWithRetry(pingManager, allResults, db.get())) {
             return 1;
         }
 
