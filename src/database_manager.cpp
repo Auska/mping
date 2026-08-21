@@ -60,6 +60,9 @@ bool DatabaseManager::initialize() {
     // 将原始指针转移给智能指针管理
     db.reset(rawDb);
 
+    // 并发写入时等待锁而不是立即失败（默认 busy timeout 为 0）
+    sqlite3_busy_timeout(db.get(), 1000);
+
     // 创建hosts表，用于存储IP地址与主机名的映射关系
     const char* createHostsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS hosts (
@@ -232,6 +235,8 @@ bool DatabaseManager::upsertHosts(
         if (rc != SQLITE_OK) {
             std::println(std::cerr, "Failed to commit transaction for hosts: {}",
                          sqlite3_errmsg(db.get()));
+            // 事务未关闭，必须回滚避免残留（否则后续 BEGIN 全部失败）
+            sqlite3_exec(db.get(), "ROLLBACK;", 0, 0, 0);
             success = false;
         }
     } else {
@@ -248,6 +253,8 @@ bool DatabaseManager::insertPingResultsBatch(
     if (results.empty()) {
         return true;
     }
+
+    std::lock_guard<std::mutex> lock(dbMutex);
 
     // 准备插入语句到统一的ping_results表
     const char* insertSQL =
@@ -298,6 +305,8 @@ bool DatabaseManager::insertPingResultsBatch(
         if (rc != SQLITE_OK) {
             std::println(std::cerr, "Failed to commit transaction for ping results: {}",
                          sqlite3_errmsg(db.get()));
+            // 事务未关闭，必须回滚避免残留（否则后续 BEGIN 全部失败）
+            sqlite3_exec(db.get(), "ROLLBACK;", 0, 0, 0);
             success = false;
         }
     } else {

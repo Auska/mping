@@ -20,10 +20,19 @@
 #include "commands.h"
 #include "icmplib.h"
 
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 namespace {
 
+// 探测 raw ICMP socket 能力：直接尝试打开（覆盖 root 与 cap_net_raw 两种场景）
 bool hasRawSocketCapability() {
-    return geteuid() == 0;
+    int fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if (fd < 0) {
+        return false;
+    }
+    close(fd);
+    return true;
 }
 
 std::string getCurrentTimestamp() {
