@@ -62,15 +62,17 @@ target_include_directories(mping PRIVATE src include)
 target_compile_definitions(mping PRIVATE ${MPING_COMMON_DEFINES})
 target_link_libraries(mping PRIVATE Threads::Threads)
 
+# SQLite is the default backend and is always compiled in.
+# USE_SQLITE / USE_POSTGRESQL are detected independently and may both be defined.
+target_sources(mping PRIVATE src/database_manager.cpp)
+target_compile_definitions(mping PRIVATE USE_SQLITE=1)
+target_link_libraries(mping PRIVATE SQLite::SQLite3)
+
 if(MPING_USE_POSTGRESQL)
     find_package(PostgreSQL REQUIRED)
     target_sources(mping PRIVATE src/database_manager_pg.cpp)
     target_compile_definitions(mping PRIVATE USE_POSTGRESQL=1)
     target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
-else()
-    target_sources(mping PRIVATE src/database_manager.cpp)
-    target_compile_definitions(mping PRIVATE USE_SQLITE=1)
-    target_link_libraries(mping PRIVATE SQLite::SQLite3)
 endif()
 
 install(TARGETS mping RUNTIME DESTINATION bin)

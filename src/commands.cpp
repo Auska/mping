@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <print>
+#include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
@@ -34,7 +35,13 @@ std::unique_ptr<DatabaseInterface> Command::createDatabase() {
     dbType = DatabaseFactory::detectDatabaseType(config.databasePath);
 #endif
 
-    return DatabaseFactory::createDatabase(dbType, config.databasePath);
+    auto db = DatabaseFactory::createDatabase(dbType, config.databasePath);
+    if (!db) {
+        // 不应发生：SQLite 始终编译。仅在数据库后端编译缺失时触发
+        throw std::runtime_error(
+            "Database backend is not compiled in (check USE_SQLITE/USE_POSTGRESQL macros)");
+    }
+    return db;
 }
 
 bool Command::initializeDatabase(DatabaseInterface& db) {
