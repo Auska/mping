@@ -253,6 +253,14 @@ void ConfigFile::set(const std::string& section, const std::string& key, const s
     if (knownEntries.find(entryKey) == knownEntries.end()) {
         knownEntries.insert(entryKey);
         originalEntries.push_back({section, key, value});
+    } else {
+        // 同步已存在条目，save() 才能写回更新后的值
+        for (auto& entry : originalEntries) {
+            if (entry.section == section && entry.key == key) {
+                entry.value = value;
+                break;
+            }
+        }
     }
 }
 

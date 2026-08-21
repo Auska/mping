@@ -422,3 +422,33 @@ TEST_CASE("ConfigFile save preserves original path", "[config_file][save]") {
 
     std::filesystem::remove(testPath);
 }
+
+TEST_CASE("ConfigFile save writes updated values for existing keys", "[config_file][save]") {
+    std::string testPath = "/tmp/test_update_XXXXXX.conf";
+    int fd               = mkstemps(testPath.data(), 5);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    // 预置配置文件
+    std::ofstream preset(testPath);
+    preset << "[general]\ndatabase = false\ndatabase_path = \"/tmp/old.db\"\n";
+    preset.close();
+
+    ConfigFile config;
+    REQUIRE(config.load(testPath));
+
+    // 更新已存在键 + 新增键
+    config.setBool("general", "database", true);
+    config.set("general", "database_path", "/tmp/new.db");
+    config.set("general", "ping_count", "5");
+    REQUIRE(config.save(testPath));
+
+    // 重新加载验证：旧键必须写回新值
+    ConfigFile loaded;
+    REQUIRE(loaded.load(testPath));
+    REQUIRE(loaded.getBool("general", "database") == true);
+    REQUIRE(loaded.get("general", "database_path") == "/tmp/new.db");
+    REQUIRE(loaded.get("general", "ping_count") == "5");
+
+    std::filesystem::remove(testPath);
+}
