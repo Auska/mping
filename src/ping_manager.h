@@ -17,7 +17,6 @@
 
 class PingManager {
    public:
-    PingManager();
     ~PingManager();
 
     std::vector<PingResult> performPing(
@@ -31,8 +30,6 @@ class PingManager {
                                        size_t maxConcurrent = ConfigDefaults::MAX_CONCURRENT_PINGS);
 
    private:
-    static const size_t DEFAULT_MAX_CONCURRENT = ConfigDefaults::MAX_CONCURRENT_PINGS;
-
     std::vector<PingResult> performPingInternal(const std::map<std::string, std::string>& hosts,
                                                 int pingCount, int timeoutSeconds,
                                                 size_t maxConcurrent);

@@ -5,6 +5,7 @@
 #include <memory>
 #include <print>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -170,19 +171,13 @@ bool PingCommand::insertPingResults(DatabaseInterface* db,
 
 bool PingCommand::confirmFailuresWithRetry(PingManager& pingManager,
                                            std::vector<PingResult>& allResults,
-                                           DatabaseInterface* db) {
+                                           DatabaseInterface* db,
+                                           const std::unordered_set<std::string>& alertIPs) {
     if (!db) {
         return false;
     }
 
-    // 预查当前在告警表中的 IP 列表（已告警主机处于持续故障，无需重复确认）
-    auto activeAlertTuples = db->getActiveAlerts();
-    std::unordered_set<std::string> alertIPs;
-    for (const auto& alert : activeAlertTuples) {
-        alertIPs.insert(std::get<0>(alert));
-    }
-
-    // 收集首次检查不通且未告警的主机
+    // 收集首次检查不通且未告警的主机（已告警主机处于持续故障，无需重复确认）
     std::map<std::string, std::string> pendingHosts;
     for (const auto& r : allResults) {
         if (!r.success && alertIPs.count(r.ip) == 0) {
@@ -204,31 +199,27 @@ bool PingCommand::confirmFailuresWithRetry(PingManager& pingManager,
         pingManager.retryHosts(pendingHosts, ConfigDefaults::ALERT_CONFIRM_RETRY_COUNT);
 
     // 用重试确认的结果更新输出：仅当重试成功时覆盖为成功状态
+    std::unordered_map<std::string, PingResult> retryByIp;
+    retryByIp.reserve(retryResults.size());
     for (const auto& rr : retryResults) {
-        if (!rr.success) {
-            continue;
+        if (rr.success) {
+            retryByIp[rr.ip] = rr;
         }
-        for (auto& r : allResults) {
-            if (r.ip == rr.ip) {
-                r = rr;
-                break;
-            }
+    }
+    for (auto& r : allResults) {
+        auto it = retryByIp.find(r.ip);
+        if (it != retryByIp.end()) {
+            r = it->second;
         }
     }
 
     return true;
 }
 
-bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults) {
+bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults,
+                                const std::unordered_set<std::string>& alertIPs) {
     if (!db) {
         return false;
-    }
-
-    // 预查当前在告警表中的 IP 列表
-    auto activeAlertTuples = db->getActiveAlerts();
-    std::unordered_set<std::string> alertIPs;
-    for (const auto& alert : activeAlertTuples) {
-        alertIPs.insert(std::get<0>(alert));
     }
 
     // 只在实际状态变化时写入
@@ -257,15 +248,17 @@ bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingRes
 
 int PingCommand::execute() {
     // 读取主机列表
-    std::map<std::string, std::string> hosts;
-
     // 如果指定了文件名（通过 -f 参数或命令行参数），则从文件读取主机列表
     // 否则如果启用了数据库，则从数据库的 hosts 表读取主机列表
     // 如果两者都没有指定，则默认从 ip.txt 文件读取
+    // db 在启用数据库时创建一次，供取主机与存结果复用
+    std::unique_ptr<DatabaseInterface> db;
+    std::map<std::string, std::string> hosts;
+
     if (!config.filename.empty()) {
         hosts = readHostsFromFile(config.filename);
     } else if (config.enableDatabase) {
-        auto db = createDatabase();
+        db = createDatabase();
         if (!initializeDatabase(*db)) {
             return 1;
         }
@@ -283,15 +276,23 @@ int PingCommand::execute() {
     PingManager pingManager;
     auto allResults = pingManager.performPing(hosts);
 
-    // 如果启用了数据库，则初始化数据库管理器并存储结果
+    // 如果启用了数据库，则存储结果并处理告警
     if (config.enableDatabase) {
-        auto db = createDatabase();
-        if (!initializeDatabase(*db)) {
-            return 1;
+        if (!db) {
+            db = createDatabase();
+            if (!initializeDatabase(*db)) {
+                return 1;
+            }
+        }
+
+        // 预查当前在告警表中的 IP（一次查询，确认重试与告警处理共用）
+        std::unordered_set<std::string> alertIPs;
+        for (const auto& alert : db->getActiveAlerts()) {
+            alertIPs.insert(std::get<0>(alert));
         }
 
         // 首次不通且未告警的主机，先重试确认再决定是否告警（避免误报）
-        if (!confirmFailuresWithRetry(pingManager, allResults, db.get())) {
+        if (!confirmFailuresWithRetry(pingManager, allResults, db.get(), alertIPs)) {
             return 1;
         }
 
@@ -301,7 +302,7 @@ int PingCommand::execute() {
         }
 
         // 处理告警逻辑
-        if (!processAlerts(db.get(), allResults)) {
+        if (!processAlerts(db.get(), allResults, alertIPs)) {
             return 1;
         }
 

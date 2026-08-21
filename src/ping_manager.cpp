@@ -13,7 +13,6 @@
 #include <iomanip>
 #include <iostream>
 #include <print>
-#include <ranges>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -38,7 +37,7 @@ std::string getCurrentTimestamp() {
 PingResult pingHostRaw(const std::string& ip, const std::string& hostname, int pingCount,
                        int timeoutSeconds) {
     bool success   = false;
-    short minDelay = std::numeric_limits<short>::max();
+    short minDelay = static_cast<short>(timeoutSeconds * 1000);
 
     unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
     icmplib::IPAddress target(ip);
@@ -46,9 +45,9 @@ PingResult pingHostRaw(const std::string& ip, const std::string& hostname, int p
     for (int i = 0; i < pingCount; ++i) {
         auto result = icmplib::Ping(target, timeoutMs, static_cast<uint16_t>(i + 1));
         if (result.response == icmplib::PingResult::ResponseType::Success) {
-            success = true;
+            success  = true;
+            minDelay = std::min(minDelay, static_cast<short>(result.delay));
         }
-        minDelay = std::min(minDelay, static_cast<short>(result.delay));
     }
 
     return {.ip        = ip,
@@ -120,9 +119,6 @@ PingResult pingHost(const std::string& ip, const std::string& hostname, int ping
     return pingHostSystem(ip, hostname, pingCount, timeoutSeconds);
 }
 
-PingManager::PingManager() {
-}
-
 PingManager::~PingManager() {
     stop.store(true);
     condition.notify_all();
@@ -134,7 +130,8 @@ PingManager::~PingManager() {
 }
 
 void PingManager::ensureThreadCount(size_t needed) {
-    size_t target = std::min(std::max(size_t{1}, needed), DEFAULT_MAX_CONCURRENT);
+    size_t target = std::min(std::max(size_t{1}, needed),
+                             static_cast<size_t>(ConfigDefaults::MAX_CONCURRENT_PINGS));
     while (workers.size() < target) {
         workers.emplace_back([this] { workerLoop(); });
     }
@@ -164,12 +161,12 @@ void PingManager::workerLoop() {
 
 std::vector<PingResult> PingManager::performPingInternal(
     const std::map<std::string, std::string>& hosts, int pingCount, int timeoutSeconds,
-    size_t /*maxConcurrent*/) {
+    size_t maxConcurrent) {
     if (hosts.empty()) {
         return {};
     }
 
-    ensureThreadCount(hosts.size());
+    ensureThreadCount(std::min(maxConcurrent, hosts.size()));
 
     std::vector<PingResult> allResults;
     allResults.reserve(hosts.size());

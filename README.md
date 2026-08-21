@@ -50,6 +50,18 @@ The project follows a command-pattern architecture with modular design:
 - Default filename: `ip.txt`
 - Default behavior: Show all hosts with status (IP, hostname, status, delay)
 
+### Raw socket mode (recommended for non-root)
+
+mping uses raw ICMP sockets when run as root (or with the `cap_net_raw` capability),
+otherwise it falls back to spawning a system `ping` process per host. To enable the
+raw-socket path for unprivileged users without full root, grant the capability once:
+
+```bash
+sudo setcap cap_net_raw+ep $(which mping)
+```
+
+Note: `setcap` is reset by reinstallation or rebuilds — re-apply after `cmake --install`.
+
 ### File format
 
 The input file should contain lines in the following format:

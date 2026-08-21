@@ -18,10 +18,6 @@ DatabaseManager::DatabaseManager(const std::string& path) : dbPath(path), db(nul
     }
 }
 
-DatabaseManager::~DatabaseManager() {
-    // 智能指针会自动关闭数据库连接
-}
-
 bool DatabaseManager::execSQL(const char* sql, const std::string& context) {
     char* errMsg = nullptr;
     int rc       = sqlite3_exec(db.get(), sql, 0, 0, &errMsg);
@@ -126,13 +122,6 @@ bool DatabaseManager::initialize() {
     return execSQL(createRecoveryTableSQL, "creating recovery_records table");
 }
 
-// 为特定IP地址创建表（已重构为使用统一表，此函数保持为空以保持接口兼容性）
-bool DatabaseManager::createIPTable(const std::string& /*ip*/) {
-    // 已经在initialize()中创建了统一的ping_results表和索引
-    // 此处无需额外操作
-    return true;
-}
-
 int DatabaseManager::execDelete(const char* table, int days) {
     std::string sql =
         std::format("DELETE FROM {} WHERE {} < datetime('now', '-' || ? || ' days');", table,
@@ -179,27 +168,6 @@ bool DatabaseManager::insertPingResult(const std::string& ip, const std::string&
     std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results;
     results.emplace_back(ip, hostname, delay, success, timestamp);
     return insertPingResults(results);
-}
-
-// 辅助函数：验证IP地址格式并创建表
-bool DatabaseManager::validateAndPrepareIPs(
-    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    // 验证所有IP地址格式
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!isValidIP(ip)) {
-            std::println(std::cerr, "Invalid IP address format: {}", ip);
-            return false;
-        }
-    }
-
-    // 为所有IP地址创建表（如果尚未创建）
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        if (!createIPTable(ip)) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 // 辅助函数：批量插入或更新主机信息
@@ -353,9 +321,12 @@ bool DatabaseManager::insertPingResults(
 
     bool success = true;
 
-    // 验证并准备IP地址
-    if (success) {
-        success = validateAndPrepareIPs(results);
+    // 验证所有IP地址格式
+    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
+        if (!isValidIP(ip)) {
+            std::println(std::cerr, "Invalid IP address format: {}", ip);
+            return false;
+        }
     }
 
     // 批量插入或更新主机信息

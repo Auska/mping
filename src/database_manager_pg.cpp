@@ -17,28 +17,32 @@ DatabaseManagerPG::DatabaseManagerPG(const std::string& connectionInfo)
     }
 }
 
-DatabaseManagerPG::~DatabaseManagerPG() {
-    // 智能指针会自动关闭数据库连接
-}
-
-bool DatabaseManagerPG::executeQuery(const std::string& query) {
+bool DatabaseManagerPG::ensureConnected() {
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
         return false;
     }
 
-    // 检查连接状态，如果连接断开则尝试重新连接
-    if (PQstatus(conn.get()) != CONNECTION_OK) {
-        std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
-        PQfinish(conn.get());
-        PGconn* rawConn = PQconnectdb(connInfo.c_str());
-        conn.reset(rawConn);
+    if (PQstatus(conn.get()) == CONNECTION_OK) {
+        return true;
+    }
 
-        if (PQstatus(conn.get()) != CONNECTION_OK) {
-            std::println(std::cerr, "Failed to reconnect to database: {}",
-                         PQerrorMessage(conn.get()));
-            return false;
-        }
+    // 连接断开则尝试重新连接
+    std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
+    PQfinish(conn.get());
+    PGconn* rawConn = PQconnectdb(connInfo.c_str());
+    conn.reset(rawConn);
+
+    if (PQstatus(conn.get()) != CONNECTION_OK) {
+        std::println(std::cerr, "Failed to reconnect to database: {}", PQerrorMessage(conn.get()));
+        return false;
+    }
+    return true;
+}
+
+bool DatabaseManagerPG::executeQuery(const std::string& query) {
+    if (!ensureConnected()) {
+        return false;
     }
 
     PGresult* res = PQexec(conn.get(), query.c_str());
@@ -52,23 +56,8 @@ bool DatabaseManagerPG::executeQuery(const std::string& query) {
 }
 
 PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
-    if (!conn) {
-        std::println(std::cerr, "Database not initialized");
+    if (!ensureConnected()) {
         return nullptr;
-    }
-
-    // 检查连接状态，如果连接断开则尝试重新连接
-    if (PQstatus(conn.get()) != CONNECTION_OK) {
-        std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
-        PQfinish(conn.get());
-        PGconn* rawConn = PQconnectdb(connInfo.c_str());
-        conn.reset(rawConn);
-
-        if (PQstatus(conn.get()) != CONNECTION_OK) {
-            std::println(std::cerr, "Failed to reconnect to database: {}",
-                         PQerrorMessage(conn.get()));
-            return nullptr;
-        }
     }
 
     PGresult* res = PQexec(conn.get(), query.c_str());
@@ -266,15 +255,6 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
     return insertPingResults(results);
 }
 
-// 辅助函数：创建IP表和索引（已重构为使用统一表，此函数保持为空以保持接口兼容性）
-bool DatabaseManagerPG::createIPTables(
-    const std::vector<
-        std::tuple<std::string, std::string, short, bool, std::string>>& /*results*/) {
-    // 已经在initialize()中创建了统一的ping_results表和索引
-    // 此处无需额外操作
-    return true;
-}
-
 // 辅助函数：批量插入主机信息
 bool DatabaseManagerPG::insertHostsBatch(
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
@@ -441,11 +421,6 @@ bool DatabaseManagerPG::insertPingResults(
                 break;
             }
         }
-    }
-
-    // 为所有IP地址创建表（如果尚未创建）
-    if (success) {
-        success = createIPTables(results);
     }
 
     // 在hosts表中批量插入或更新IP与主机名的映射关系

@@ -26,15 +26,14 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
     };
     std::unique_ptr<PGconn, PGconnDeleter> conn;
 
+    // 检查连接状态，断开时自动重连；成功返回 true
+    bool ensureConnected();
+
     // 执行不返回结果的查询
     bool executeQuery(const std::string& query);
 
     // 执行返回结果的查询
     PGresult* executeQueryWithResult(const std::string& query);
-
-    // 为特定IP地址创建表
-    bool createIPTables(
-        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
     // 批量插入主机信息
     bool insertHostsBatch(
@@ -50,7 +49,7 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
    public:
     // 构造函数和析构函数
     explicit DatabaseManagerPG(const std::string& connectionInfo);
-    ~DatabaseManagerPG();
+    ~DatabaseManagerPG() = default;
 
     // 初始化数据库
     bool initialize() override;

@@ -21,7 +21,7 @@ class ConfigFile {
     std::vector<ConfigEntry> originalEntries;
     std::set<std::pair<std::string, std::string>> knownEntries;
     std::string filePath;
-    bool loaded;
+    bool loaded = false;
 
     // 去除字符串两端的空白字符
     std::string trim(const std::string& str) const;
@@ -30,8 +30,8 @@ class ConfigFile {
     bool parseLine(const std::string& line, std::string& currentSection);
 
    public:
-    ConfigFile();
-    ~ConfigFile();
+    ConfigFile()                        = default;
+    ~ConfigFile()                       = default;
     ConfigFile(ConfigFile&&)            = default;
     ConfigFile& operator=(ConfigFile&&) = default;
 

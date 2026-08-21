@@ -9,10 +9,8 @@
 struct ConfigDefaults {
     static constexpr int MAX_CONCURRENT_PINGS   = 50;  // 最大并发 ping 数
     static constexpr int DEFAULT_CLEANUP_DAYS   = 30;  // 默认清理天数
-    static constexpr int DEFAULT_PING_COUNT     = 3;   // 默认 ping 包数量
     static constexpr int FIRST_ROUND_PING_COUNT = 1;   // 第一轮 ping 包数量
     static constexpr int RETRY_ROUND_PING_COUNT = 5;   // 第二轮重试 ping 包数量
-    static constexpr int DEFAULT_TIMEOUT        = 3;   // 默认超时时间（秒）
     static constexpr int FIRST_ROUND_TIMEOUT    = 1;   // 第一轮超时时间（秒）
     static constexpr int RETRY_ROUND_TIMEOUT    = 3;   // 第二轮重试超时时间（秒）
     // 新增告警前的确认重试轮数：首次不通时先重试确认，避免瞬时故障误报告警

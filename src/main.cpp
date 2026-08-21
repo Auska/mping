@@ -9,11 +9,6 @@
 
 namespace {
 
-bool isQueryModeEnabled(int val) {
-    // -1 = disabled (default), -2 = enabled without days, >= 0 = enabled with days
-    return val != -1;
-}
-
 std::unique_ptr<Command> dispatchCommand(const ConfigManager::Config& config) {
     if (!config.queryIP.empty()) {
         return std::make_unique<QueryIPCommand>(config);
@@ -21,10 +16,12 @@ std::unique_ptr<Command> dispatchCommand(const ConfigManager::Config& config) {
     if (config.cleanupDays >= 0) {
         return std::make_unique<CleanupCommand>(config);
     }
-    if (isQueryModeEnabled(config.queryAlerts)) {
+    // queryAlerts/queryRecoveryRecords: -1 = disabled (default), -2 = enabled without days,
+    // >= 0 = enabled with days
+    if (config.queryAlerts != -1) {
         return std::make_unique<QueryAlertsCommand>(config);
     }
-    if (isQueryModeEnabled(config.queryRecoveryRecords)) {
+    if (config.queryRecoveryRecords != -1) {
         return std::make_unique<QueryRecoveryCommand>(config);
     }
     return std::make_unique<PingCommand>(config);

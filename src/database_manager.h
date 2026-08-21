@@ -26,13 +26,6 @@ class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
     };
     std::unique_ptr<sqlite3, Sqlite3Deleter> db;
 
-    // 为特定IP地址创建表
-    bool createIPTable(const std::string& ip);
-
-    // 验证并准备IP地址
-    bool validateAndPrepareIPs(
-        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
-
     // 批量插入或更新主机信息
     bool upsertHosts(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
@@ -50,7 +43,7 @@ class DatabaseManager : public DatabaseInterface, protected DatabaseBase {
    public:
     // 构造函数和析构函数
     explicit DatabaseManager(const std::string& path);
-    ~DatabaseManager();
+    ~DatabaseManager() = default;
 
     // 初始化数据库
     bool initialize() override;

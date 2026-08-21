@@ -8,12 +8,6 @@
 #include <set>
 #include <sstream>
 
-ConfigFile::ConfigFile() : loaded(false) {
-}
-
-ConfigFile::~ConfigFile() {
-}
-
 std::string ConfigFile::trim(const std::string& str) const {
     size_t first = str.find_first_not_of(" \t\n\r");
     if (first == std::string::npos) {
