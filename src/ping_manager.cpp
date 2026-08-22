@@ -176,8 +176,9 @@ std::vector<PingResult> PingManager::checkHosts(const std::map<std::string, std:
 
             if (rit != roundByIp.end() && rit->second.success) {
                 finalResults[ip] = std::move(rit->second);
-                it               = pending.erase(it);
+                // ip 引用 pending 节点键，须先移除失败计数再 erase 节点
                 consecutiveFailures.erase(ip);
+                it = pending.erase(it);
                 continue;
             }
 
@@ -192,8 +193,9 @@ std::vector<PingResult> PingManager::checkHosts(const std::map<std::string, std:
             if (rit != roundByIp.end()) {
                 finalResults[ip] = std::move(rit->second);
             }
-            it = pending.erase(it);
+            // ip 引用 pending 节点键，须先移除失败计数再 erase 节点
             consecutiveFailures.erase(ip);
+            it = pending.erase(it);
         }
     }
 
