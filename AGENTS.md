@@ -92,7 +92,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 
 ```
 DatabaseManagerPG（PostgreSQL, PGconn*）
-表名: ping_x_x_x_x
+表名: hosts / ping_results / alerts / recovery_records
 IP 校验: IPValidator（ip_validator.h）
 ```
 
