@@ -7,14 +7,14 @@
  * 集中定义所有默认配置值，避免模块间的编译依赖。
  */
 struct ConfigDefaults {
-    static constexpr int MAX_CONCURRENT_PINGS   = 50;  // 最大并发 ping 数
-    static constexpr int DEFAULT_CLEANUP_DAYS   = 30;  // 默认清理天数
-    static constexpr int FIRST_ROUND_PING_COUNT = 1;   // 第一轮 ping 包数量
-    static constexpr int RETRY_ROUND_PING_COUNT = 5;   // 第二轮重试 ping 包数量
-    static constexpr int FIRST_ROUND_TIMEOUT    = 1;   // 第一轮超时时间（秒）
-    static constexpr int RETRY_ROUND_TIMEOUT    = 3;   // 第二轮重试超时时间（秒）
-    // 新增告警前的确认重试轮数：首次不通时先重试确认，避免瞬时故障误报告警
-    static constexpr int ALERT_CONFIRM_RETRY_COUNT = 3;
+    static constexpr int MAX_CONCURRENT_PINGS = 50;  // 最大并发 ping 数
+    static constexpr int DEFAULT_CLEANUP_DAYS = 30;  // 默认清理天数
+    // 滑动窗口检查参数：每轮每主机发 CHECK_ROUND_PING_COUNT 个探测包（任一成功即本轮成功），
+    // 连续 DOWN_CONFIRM_WINDOW 轮全部失败才判定离线，对抗瞬时丢包/网络波动。
+    // 取代原先"第一轮快速探测 + 失败重试 + 告警确认重试"的重叠流程。
+    static constexpr int CHECK_ROUND_PING_COUNT = 3;  // 每轮探测包数
+    static constexpr int CHECK_ROUND_TIMEOUT    = 1;  // 每包超时（秒）
+    static constexpr int DOWN_CONFIRM_WINDOW    = 3;  // 连续失败判定离线的轮数窗口
 
     // 文件名默认值
     static constexpr const char* DEFAULT_FILENAME = "ip.txt";

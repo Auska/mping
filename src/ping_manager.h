@@ -19,14 +19,12 @@ class PingManager {
    public:
     ~PingManager();
 
-    std::vector<PingResult> performPing(
-        const std::map<std::string, std::string>& hosts,
-        size_t maxConcurrent = ConfigDefaults::MAX_CONCURRENT_PINGS);
-
-    // 对指定主机执行多轮重试确认：任一轮成功即停止该主机的重试，
-    // 返回每台主机的最终检查结果（全部重试轮次结束后）
-    std::vector<PingResult> retryHosts(const std::map<std::string, std::string>& hosts,
-                                       int retryCount,
+    // 滑动窗口检查：取代原先"两轮 ping + 告警确认重试"的重叠流程。
+    // 每轮并发检查仍待判定主机（每轮每主机发 CHECK_ROUND_PING_COUNT 个探测包），
+    // 任一轮成功即判定在线；连续 windowSize 轮全部失败才判定离线（滑动窗口对抗网络波动）。
+    // 轮次有界：在线主机 1 轮出结果，离线主机恰好 windowSize 轮。
+    std::vector<PingResult> checkHosts(const std::map<std::string, std::string>& hosts,
+                                       int windowSize,
                                        size_t maxConcurrent = ConfigDefaults::MAX_CONCURRENT_PINGS);
 
    private:

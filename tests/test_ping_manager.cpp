@@ -7,13 +7,17 @@
 #include "ping_manager.h"
 #include "test_helpers.h"
 
+namespace {
+constexpr int kWindow = ConfigDefaults::DOWN_CONFIRM_WINDOW;
+}
+
 TEST_CASE("PingManager basic functionality", "[ping]") {
     PingManager pingManager;
 
     SECTION("Ping single host") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
 
-        auto results = pingManager.performPing(hosts, 1);
+        auto results = pingManager.checkHosts(hosts, kWindow, 1);
         REQUIRE(results.size() == 1);
 
         const auto& result = results[0];
@@ -29,7 +33,7 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"},
                                                     {"127.0.0.2", "localhost2"}};
 
-        auto results = pingManager.performPing(hosts, 2);
+        auto results = pingManager.checkHosts(hosts, kWindow, 2);
         REQUIRE(results.size() == 2);
     }
 
@@ -38,7 +42,7 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
             {"192.0.2.1", "invalid-host"}  // TEST-NET-1, should be unreachable
         };
 
-        auto results = pingManager.performPing(hosts, 1);
+        auto results = pingManager.checkHosts(hosts, kWindow, 1);
         REQUIRE(results.size() == 1);
 
         const auto& result = results[0];
@@ -47,35 +51,21 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
         REQUIRE(result.delayMs > 0);
     }
 
-    SECTION("Invalid IP never deadlocks") {
-        // 空地址使 IPAddress 构造必然抛异常（getaddrinfo 对空串必然失败）
+    SECTION("Invalid IP produces a failure result, never deadlocks") {
+        // 空地址使 IPAddress 构造必然抛异常；pingHost 内部捕获并按不可达处理。
+        // 若任务完成计数不递减（或窗口循环不收敛），这里会永久挂起
         std::map<std::string, std::string> hosts = {{"", "bad-host"}};
         auto future                              = std::async(std::launch::async,
-                                                              [&] { return pingManager.performPing(hosts, 1).size(); });
-        // pingHost 抛异常时若完成计数不递减，这里会永久挂起
+                                                              [&] { return pingManager.checkHosts(hosts, kWindow, 1).size(); });
         REQUIRE(future.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
-        REQUIRE(future.get() == 0);
+        REQUIRE(future.get() == 1);  // 窗口收敛后输出失败结果而非挂起
     }
 
     SECTION("Ping with empty hosts list") {
         std::map<std::string, std::string> hosts;
 
-        auto results = pingManager.performPing(hosts, 1);
+        auto results = pingManager.checkHosts(hosts, kWindow, 1);
         REQUIRE(results.empty() == true);
-    }
-
-    SECTION("Ping with multiple count") {
-        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
-
-        auto results = pingManager.performPing(hosts, 1);
-        REQUIRE(results.size() == 1);
-    }
-
-    SECTION("Ping with custom timeout") {
-        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
-
-        auto results = pingManager.performPing(hosts, 1);
-        REQUIRE(results.size() == 1);
     }
 }
 
@@ -87,7 +77,7 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
                                                     {"127.0.0.2", "localhost2"},
                                                     {"127.0.0.3", "localhost3"}};
 
-        auto results = pingManager.performPing(hosts, 10);
+        auto results = pingManager.checkHosts(hosts, kWindow, 10);
         REQUIRE(results.size() == 3);
     }
 
@@ -100,12 +90,12 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
 
         std::thread t1([&]() {
             PingManager pm1;
-            results1.push_back(pm1.performPing(hosts1, 1));
+            results1.push_back(pm1.checkHosts(hosts1, kWindow, 1));
         });
 
         std::thread t2([&]() {
             PingManager pm2;
-            results2.push_back(pm2.performPing(hosts2, 1));
+            results2.push_back(pm2.checkHosts(hosts2, kWindow, 1));
         });
 
         t1.join();
@@ -118,24 +108,18 @@ TEST_CASE("PingManager concurrent execution", "[ping][concurrent]") {
     }
 }
 
-TEST_CASE("PingManager retryHosts confirmation", "[ping][retry]") {
+TEST_CASE("PingManager sliding-window check", "[ping][window]") {
     PingManager pingManager;
 
     SECTION("Empty hosts list returns empty") {
         std::map<std::string, std::string> hosts;
-        auto results = pingManager.retryHosts(hosts, 3, 1);
+        auto results = pingManager.checkHosts(hosts, kWindow, 1);
         REQUIRE(results.empty());
     }
 
-    SECTION("Non-positive retry count returns empty") {
+    SECTION("Window size 1 gives immediate verdict (fast path)") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
-        auto results                             = pingManager.retryHosts(hosts, 0, 1);
-        REQUIRE(results.empty());
-    }
-
-    SECTION("Reachable host succeeds within one round") {
-        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
-        auto results                             = pingManager.retryHosts(hosts, 3, 1);
+        auto results                             = pingManager.checkHosts(hosts, 1, 1);
         REQUIRE(results.size() == 1);
         REQUIRE(results[0].ip == "127.0.0.1");
         if (haveRawPingCapability()) {
@@ -143,19 +127,29 @@ TEST_CASE("PingManager retryHosts confirmation", "[ping][retry]") {
         }
     }
 
-    SECTION("Unreachable host stays failed after all rounds") {
+    SECTION("Reachable host judged up in the first round") {
+        std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"}};
+        auto results                             = pingManager.checkHosts(hosts, kWindow, 1);
+        REQUIRE(results.size() == 1);
+        REQUIRE(results[0].ip == "127.0.0.1");
+        if (haveRawPingCapability()) {
+            REQUIRE(results[0].success);
+        }
+    }
+
+    SECTION("Unreachable host judged down after the full window") {
         std::map<std::string, std::string> hosts = {
             {"192.0.2.1", "invalid-host"}  // TEST-NET-1, should be unreachable
         };
-        auto results = pingManager.retryHosts(hosts, 1, 1);
+        auto results = pingManager.checkHosts(hosts, kWindow, 1);
         REQUIRE(results.size() == 1);
         REQUIRE(results[0].success == false);
     }
 
-    SECTION("Mixed hosts: reachable recovers, unreachable stays failed") {
+    SECTION("Mixed hosts: reachable recovers, unreachable stays down") {
         std::map<std::string, std::string> hosts = {{"127.0.0.1", "localhost"},
                                                     {"192.0.2.1", "invalid-host"}};
-        auto results                             = pingManager.retryHosts(hosts, 1, 2);
+        auto results                             = pingManager.checkHosts(hosts, kWindow, 2);
         REQUIRE(results.size() == 2);
         bool reachableSeen   = false;
         bool unreachableSeen = false;
@@ -186,7 +180,7 @@ TEST_CASE("PingManager performance", "[ping][performance]") {
         }
 
         auto start   = std::chrono::high_resolution_clock::now();
-        auto results = pingManager.performPing(hosts, 10);
+        auto results = pingManager.checkHosts(hosts, kWindow, 10);
         auto end     = std::chrono::high_resolution_clock::now();
 
         REQUIRE(results.size() == 10);

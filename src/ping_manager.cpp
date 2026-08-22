@@ -25,10 +25,10 @@ PingResult pingHost(const std::string& ip, const std::string& hostname, int ping
     bool success   = false;
     short minDelay = static_cast<short>(timeoutSeconds * 1000);
 
-    unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
-    icmplib::IPAddress target(ip);
-
     try {
+        unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
+        // 不合法 IP 也在此捕获并按不可达处理，保证每台主机都有检查结果（窗口循环依赖该保证）
+        icmplib::IPAddress target(ip);
         // 复用同一 raw socket 连续发包，避免每包重复创建/关闭 socket
         icmplib::PingSocket socket(target.GetType());
         for (int i = 0; i < pingCount; ++i) {
@@ -145,65 +145,66 @@ std::vector<PingResult> PingManager::performPingInternal(
     return allResults;
 }
 
-std::vector<PingResult> PingManager::performPing(const std::map<std::string, std::string>& hosts,
-                                                 size_t maxConcurrent) {
-    auto allResults = performPingInternal(hosts, ConfigDefaults::FIRST_ROUND_PING_COUNT,
-                                          ConfigDefaults::FIRST_ROUND_TIMEOUT, maxConcurrent);
-
-    std::map<std::string, std::string> failedHosts;
-    for (const auto& result : allResults) {
-        if (!result.success) {
-            failedHosts[result.ip] = result.hostname;
-        }
+std::vector<PingResult> PingManager::checkHosts(const std::map<std::string, std::string>& hosts,
+                                                int windowSize, size_t maxConcurrent) {
+    if (hosts.empty() || windowSize < 1) {
+        return {};
     }
 
-    if (!failedHosts.empty()) {
-        auto retryResults = performPingInternal(failedHosts, ConfigDefaults::RETRY_ROUND_PING_COUNT,
-                                                ConfigDefaults::RETRY_ROUND_TIMEOUT, maxConcurrent);
-
-        std::unordered_map<std::string, PingResult> retryMap;
-        retryMap.reserve(retryResults.size());
-        for (auto& r : retryResults) {
-            retryMap[r.ip] = std::move(r);
-        }
-        for (auto& result : allResults) {
-            auto it = retryMap.find(result.ip);
-            if (it != retryMap.end()) {
-                result = std::move(it->second);
-            }
-        }
-    }
-
-    return allResults;
-}
-
-std::vector<PingResult> PingManager::retryHosts(const std::map<std::string, std::string>& hosts,
-                                                int retryCount, size_t maxConcurrent) {
-    std::vector<PingResult> results;
-    if (hosts.empty() || retryCount <= 0) {
-        return results;
-    }
-
+    // 滑动窗口确认，对抗瞬时网络波动：
+    // - 任一轮成功 → 立即判定该主机在线（快路径）
+    // - 连续 windowSize 轮全部失败 → 判定离线（窗口内不允许任何成功）
+    // 轮次有界：在线主机 1 轮出结果，离线主机恰好 windowSize 轮。
     std::map<std::string, std::string> pending = hosts;
     std::unordered_map<std::string, PingResult> finalResults;
+    std::unordered_map<std::string, size_t> consecutiveFailures;
     finalResults.reserve(hosts.size());
 
-    // 每轮并行检查仍处于失败状态的主机；某主机任一轮成功即停止其重试
-    for (int round = 0; round < retryCount && !pending.empty(); ++round) {
-        auto roundResults = performPingInternal(pending, ConfigDefaults::RETRY_ROUND_PING_COUNT,
-                                                ConfigDefaults::RETRY_ROUND_TIMEOUT, maxConcurrent);
+    while (!pending.empty()) {
+        auto roundResults = performPingInternal(pending, ConfigDefaults::CHECK_ROUND_PING_COUNT,
+                                                ConfigDefaults::CHECK_ROUND_TIMEOUT, maxConcurrent);
+
+        std::unordered_map<std::string, PingResult> roundByIp;
+        roundByIp.reserve(roundResults.size());
         for (auto& r : roundResults) {
-            bool success       = r.success;
-            finalResults[r.ip] = std::move(r);
-            if (success) {
-                pending.erase(r.ip);
+            roundByIp[r.ip] = std::move(r);
+        }
+
+        for (auto it = pending.begin(); it != pending.end();) {
+            const std::string& ip = it->first;
+            auto rit              = roundByIp.find(ip);
+
+            if (rit != roundByIp.end() && rit->second.success) {
+                finalResults[ip] = std::move(rit->second);
+                it               = pending.erase(it);
+                consecutiveFailures.erase(ip);
+                continue;
             }
+
+            // 本轮失败（或异常无结果，视为失败）→ 进入窗口继续累计
+            ++consecutiveFailures[ip];
+            if (consecutiveFailures[ip] < static_cast<size_t>(windowSize)) {
+                ++it;
+                continue;
+            }
+
+            // 连续 windowSize 轮失败 → 判定离线
+            if (rit != roundByIp.end()) {
+                finalResults[ip] = std::move(rit->second);
+            }
+            it = pending.erase(it);
+            consecutiveFailures.erase(ip);
         }
     }
 
-    results.reserve(finalResults.size());
-    for (auto& [ip, result] : finalResults) {
-        results.push_back(std::move(result));
+    // 按输入顺序组织输出，保证结果顺序稳定
+    std::vector<PingResult> results;
+    results.reserve(hosts.size());
+    for (const auto& host : hosts) {
+        auto it = finalResults.find(host.first);
+        if (it != finalResults.end()) {
+            results.push_back(std::move(it->second));
+        }
     }
     return results;
 }

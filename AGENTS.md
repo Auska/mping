@@ -74,7 +74,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
        → 初始化数据库（创建表结构）
        → 读取主机列表（文件或数据库 hosts 表）
        → 执行并发 ping（PingManager，线程池，最大并发数 50）
-       → 首次不通且未告警的主机重试确认（默认 3 轮，避免瞬时故障误报告警）
+       → 滑动窗口确认（未告警主机连续 3 轮失败才判定离线，对抗瞬时波动；已告警主机单轮快检）
        → 批量写入结果到数据库
        → 处理告警（带状态检测，只写入状态变化）
        → 清理过期 ping 记录
@@ -325,7 +325,7 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **43 个测试用例**。其中 6 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **333 个断言**。
+当前共 **43 个测试用例**。其中 6 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **331 个断言**。
 
 ### 运行测试
 

@@ -11,7 +11,6 @@
 #include "config_manager.h"
 
 class DatabaseManagerPG;
-class PingManager;
 
 /**
  * @brief 命令抽象基类
@@ -87,17 +86,13 @@ class PingCommand : public Command {
     bool loadHosts(std::unique_ptr<DatabaseManagerPG>& db,
                    std::map<std::string, std::string>& hosts);
     // 落库、告警处理与自动清理（仅数据库模式调用）
-    bool persistResults(PingManager& pingManager, std::vector<PingResult>& allResults,
-                        std::unique_ptr<DatabaseManagerPG>& db);
+    bool persistResults(std::vector<PingResult>& allResults, std::unique_ptr<DatabaseManagerPG>& db,
+                        const std::unordered_set<std::string>& alertIPs);
     // 打印结果（静默模式跳过）
     void printResults(const std::vector<PingResult>& allResults);
     bool insertPingResults(DatabaseManagerPG* db, const std::vector<PingResult>& allResults);
     bool processAlerts(DatabaseManagerPG* db, const std::vector<PingResult>& allResults,
                        const std::unordered_set<std::string>& alertIPs);
-    // 对首次不通且未告警的主机重试确认，避免瞬时故障误报告警
-    bool confirmFailuresWithRetry(PingManager& pingManager, std::vector<PingResult>& allResults,
-                                  DatabaseManagerPG* db,
-                                  const std::unordered_set<std::string>& alertIPs);
 };
 
 #endif  // COMMANDS_H

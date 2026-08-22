@@ -1,6 +1,7 @@
 #include "commands.h"
 
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <print>
@@ -149,53 +150,6 @@ bool PingCommand::insertPingResults(DatabaseManagerPG* db,
     return db->insertPingResults(dbResults);
 }
 
-bool PingCommand::confirmFailuresWithRetry(PingManager& pingManager,
-                                           std::vector<PingResult>& allResults,
-                                           DatabaseManagerPG* db,
-                                           const std::unordered_set<std::string>& alertIPs) {
-    if (!db) {
-        return false;
-    }
-
-    // 收集首次检查不通且未告警的主机（已告警主机处于持续故障，无需重复确认）
-    std::map<std::string, std::string> pendingHosts;
-    for (const auto& r : allResults) {
-        if (!r.success && alertIPs.count(r.ip) == 0) {
-            pendingHosts[r.ip] = r.hostname;
-        }
-    }
-
-    if (pendingHosts.empty()) {
-        return true;
-    }
-
-    if (!config.silentMode) {
-        std::println(std::cout,
-                     "Retrying {} unreachable host(s) {} time(s) to confirm before alerting...",
-                     pendingHosts.size(), ConfigDefaults::ALERT_CONFIRM_RETRY_COUNT);
-    }
-
-    auto retryResults =
-        pingManager.retryHosts(pendingHosts, ConfigDefaults::ALERT_CONFIRM_RETRY_COUNT);
-
-    // 用重试确认的结果更新输出：仅当重试成功时覆盖为成功状态
-    std::unordered_map<std::string, PingResult> retryByIp;
-    retryByIp.reserve(retryResults.size());
-    for (const auto& rr : retryResults) {
-        if (rr.success) {
-            retryByIp[rr.ip] = rr;
-        }
-    }
-    for (auto& r : allResults) {
-        auto it = retryByIp.find(r.ip);
-        if (it != retryByIp.end()) {
-            r = it->second;
-        }
-    }
-
-    return true;
-}
-
 bool PingCommand::processAlerts(DatabaseManagerPG* db, const std::vector<PingResult>& allResults,
                                 const std::unordered_set<std::string>& alertIPs) {
     if (!db) {
@@ -249,8 +203,9 @@ bool PingCommand::loadHosts(std::unique_ptr<DatabaseManagerPG>& db,
 }
 
 // 落库、告警处理与自动清理；失败返回 false（调用方统一返回退出码 1）
-bool PingCommand::persistResults(PingManager& pingManager, std::vector<PingResult>& allResults,
-                                 std::unique_ptr<DatabaseManagerPG>& db) {
+bool PingCommand::persistResults(std::vector<PingResult>& allResults,
+                                 std::unique_ptr<DatabaseManagerPG>& db,
+                                 const std::unordered_set<std::string>& alertIPs) {
     if (!db) {
         db = createDatabase();
         if (!initializeDatabase(*db)) {
@@ -258,23 +213,12 @@ bool PingCommand::persistResults(PingManager& pingManager, std::vector<PingResul
         }
     }
 
-    // 预查当前在告警表中的 IP（一次查询，确认重试与告警处理共用）
-    std::unordered_set<std::string> alertIPs;
-    for (const auto& alert : db->getActiveAlerts()) {
-        alertIPs.insert(std::get<0>(alert));
-    }
-
-    // 首次不通且未告警的主机，先重试确认再决定是否告警（避免误报）
-    if (!confirmFailuresWithRetry(pingManager, allResults, db.get(), alertIPs)) {
-        return false;
-    }
-
     if (!insertPingResults(db.get(), allResults)) {
         std::println(std::cerr, "Failed to insert ping results into database");
         return false;
     }
 
-    // 处理告警逻辑
+    // 处理告警（只写状态变化；瞬时波动已由检查阶段的滑动窗口过滤）
     if (!processAlerts(db.get(), allResults, alertIPs)) {
         return false;
     }
@@ -299,18 +243,48 @@ int PingCommand::execute() {
         return 1;
     }
 
-    // 2. 并发 ping（线程池，内部两轮：快速探测 + 失败主机重试）
-    PingManager pingManager;
-    auto allResults = pingManager.performPing(hosts);
-
-    // 3. 落库、告警处理与自动清理（仅数据库模式）
+    // 2. 数据库模式：先查询当前告警状态（滑动窗口分级与告警处理共用一次查询）
+    std::unordered_set<std::string> alertIPs;
     if (config.enableDatabase) {
-        if (!persistResults(pingManager, allResults, db)) {
+        if (!db) {
+            db = createDatabase();
+            if (!initializeDatabase(*db)) {
+                return 1;
+            }
+        }
+        for (const auto& alert : db->getActiveAlerts()) {
+            alertIPs.insert(std::get<0>(alert));
+        }
+    }
+
+    // 3. 滑动窗口并发检查（取代原先"快速探测 + 失败重试 + 告警确认重试"的重叠流程）：
+    //    - 未告警主机：连续 DOWN_CONFIRM_WINDOW 轮失败才判定离线，对抗瞬时波动，避免误报告警
+    //    - 已告警主机（持续故障）：单轮快检，只记录当前状态
+    std::map<std::string, std::string> alertedHosts;
+    std::map<std::string, std::string> pendingHosts;
+    for (const auto& [ip, hostname] : hosts) {
+        if (alertIPs.count(ip)) {
+            alertedHosts[ip] = hostname;
+        } else {
+            pendingHosts[ip] = hostname;
+        }
+    }
+
+    PingManager pingManager;
+    std::vector<PingResult> allResults =
+        pingManager.checkHosts(pendingHosts, ConfigDefaults::DOWN_CONFIRM_WINDOW);
+    auto alertedResults = pingManager.checkHosts(alertedHosts, 1);
+    allResults.insert(allResults.end(), std::make_move_iterator(alertedResults.begin()),
+                      std::make_move_iterator(alertedResults.end()));
+
+    // 4. 落库、告警处理与自动清理（仅数据库模式）
+    if (config.enableDatabase) {
+        if (!persistResults(allResults, db, alertIPs)) {
             return 1;
         }
     }
 
-    // 4. 输出结果（静默模式跳过）
+    // 5. 输出结果（静默模式跳过）
     if (!config.silentMode) {
         printResults(allResults);
     }
