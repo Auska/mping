@@ -1,15 +1,8 @@
 #include "ping_manager.h"
 
-#include <sys/wait.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <print>
@@ -20,20 +13,7 @@
 #include "commands.h"
 #include "icmplib.h"
 
-#include <netinet/in.h>
-#include <sys/socket.h>
-
 namespace {
-
-// 探测 raw ICMP socket 能力：直接尝试打开（覆盖 root 与 cap_net_raw 两种场景）
-bool hasRawSocketCapability() {
-    int fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-    if (fd < 0) {
-        return false;
-    }
-    close(fd);
-    return true;
-}
 
 std::string getCurrentTimestamp() {
     auto now    = std::chrono::system_clock::now();
@@ -43,8 +23,8 @@ std::string getCurrentTimestamp() {
     return ss.str();
 }
 
-PingResult pingHostRaw(const std::string& ip, const std::string& hostname, int pingCount,
-                       int timeoutSeconds) {
+PingResult pingHost(const std::string& ip, const std::string& hostname, int pingCount,
+                    int timeoutSeconds) {
     bool success   = false;
     short minDelay = static_cast<short>(timeoutSeconds * 1000);
 
@@ -66,67 +46,7 @@ PingResult pingHostRaw(const std::string& ip, const std::string& hostname, int p
             .timestamp = getCurrentTimestamp()};
 }
 
-PingResult pingHostSystem(const std::string& ip, const std::string& hostname, int pingCount,
-                          int timeoutSeconds) {
-    std::string cmd = "LANG=C ping -c " + std::to_string(pingCount) + " -W "
-                      + std::to_string(timeoutSeconds) + " " + ip + " 2>/dev/null";
-
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
-        return {.ip        = ip,
-                .hostname  = hostname,
-                .success   = false,
-                .delayMs   = static_cast<short>(timeoutSeconds * 1000),
-                .timestamp = getCurrentTimestamp()};
-    }
-
-    std::string output;
-    char buf[256];
-    while (fgets(buf, sizeof(buf), pipe) != nullptr) {
-        output += buf;
-    }
-
-    int rawStatus = pclose(pipe);
-    bool success  = (rawStatus != -1 && WIFEXITED(rawStatus) && WEXITSTATUS(rawStatus) == 0);
-    short delay   = static_cast<short>(timeoutSeconds * 1000);
-
-    if (success) {
-        auto pos = output.rfind("rtt min/avg/max/mdev");
-        if (pos != std::string::npos) {
-            auto eq = output.find('=', pos);
-            if (eq != std::string::npos) {
-                auto slash = output.find('/', eq + 1);
-                if (slash != std::string::npos) {
-                    size_t start       = eq + 2;
-                    std::string minStr = output.substr(start, slash - start);
-                    try {
-                        double ms = std::stod(minStr);
-                        delay     = static_cast<short>(std::round(ms));
-                    } catch (const std::exception& e) {
-                        std::println(std::cerr, "Warning: Failed to parse ping delay '{}': {}",
-                                     minStr, e.what());
-                    }
-                }
-            }
-        }
-    }
-
-    return {.ip        = ip,
-            .hostname  = hostname,
-            .success   = success,
-            .delayMs   = delay,
-            .timestamp = getCurrentTimestamp()};
-}
-
 }  // namespace
-
-PingResult pingHost(const std::string& ip, const std::string& hostname, int pingCount,
-                    int timeoutSeconds) {
-    if (hasRawSocketCapability()) {
-        return pingHostRaw(ip, hostname, pingCount, timeoutSeconds);
-    }
-    return pingHostSystem(ip, hostname, pingCount, timeoutSeconds);
-}
 
 PingManager::~PingManager() {
     stop.store(true);
