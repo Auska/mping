@@ -317,36 +317,43 @@ class ICMPEcho {
         } catch (...) {
             return {Result::ResponseType::Failure, 0, IPAddress(), 0, 0};
         }
-        auto start = std::chrono::high_resolution_clock::now();
+        // 单一截止时间：接收循环只能等待到超时点，之后统一按 Timeout 返回
+        auto start    = std::chrono::high_resolution_clock::now();
+        auto deadline = start + std::chrono::milliseconds(timeout);
         IPAddress source(target);
 
         while (true) {
-            ICMPResponse response;
-            bool recv = response.Receive(sock, source, timeout);
-            auto end  = std::chrono::high_resolution_clock::now();
-            if (!recv) {
-                unsigned delta = static_cast<unsigned>(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
-                if (delta >= timeout) {
-                    break;
-                }
-                timeout -= delta;
-                continue;
+            auto now = std::chrono::high_resolution_clock::now();
+            if (now >= deadline) {
+                break;
             }
+            auto remaining = static_cast<unsigned>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
+            ICMPResponse response;
+            if (!response.Receive(sock, source, remaining)) {
+                break;  // select 等满剩余预算仍无包 → 超时
+            }
+            auto end = std::chrono::high_resolution_clock::now();
 
             result.response = (source.GetType() != IPAddress::Type::IPv6)
                                   ? GetResponseType(request, response)
                                   : GetResponseTypeV6(request, response);
-            if (result.response != Result::ResponseType::Timeout) {
-                result.delay =
-                    static_cast<double>(
-                        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count())
-                    / 1000.0;
-                result.address = source;
-                result.code    = response.GetICMPHeader().code;
-                result.ttl     = response.GetTTL();
-                break;
+            if (result.response != Result::ResponseType::Success &&
+                result.response != Result::ResponseType::Unreachable &&
+                result.response != Result::ResponseType::TimeExceeded) {
+                // raw socket 会收到本机全部 ICMP 回包：并发检查时其他 socket 的应答
+                // （ID 不匹配、校验失败等）也会进队，必须跳过继续等待自己的应答，
+                // 否则第一个进队的外来包就会把本次探测误判为失败（在线主机大量误报的根因）
+                continue;
             }
+            result.delay =
+                static_cast<double>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(end - start).count())
+                / 1000.0;
+            result.address = source;
+            result.code    = response.GetICMPHeader().code;
+            result.ttl     = response.GetTTL();
+            break;
         }
         return result;
     }
