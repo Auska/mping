@@ -74,7 +74,7 @@ bool ConfigManager::loadConfigFile() {
 
 void ConfigManager::applyConfigFileSettings() {
     // 从配置文件中读取设置（如果存在）
-    // 注意：database 开关仅由 CLI -d 选项控制，配置文件中的 database 设置仅作为 -d 未指定时的默认值
+    // 注意：database 开关仅由 CLI -d 选项控制，配置文件不读取 database 键
     if (configFile.has("general", "database_path")) {
         config.databasePath = configFile.get("general", "database_path", config.databasePath);
     }
@@ -105,8 +105,7 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
         }
     }
 
-    // 将当前配置写入配置文件
-    configFile.setBool("general", "database", config.enableDatabase);
+    // 将当前配置写入配置文件（database 开关仅由 CLI -d 控制，不落盘）
     configFile.set("general", "database_path", config.databasePath);
     configFile.setBool("general", "silent", config.silentMode);
     configFile.setInt("general", "cleanup_days", config.cleanupDays);

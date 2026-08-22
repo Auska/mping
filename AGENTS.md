@@ -266,9 +266,6 @@ mping 支持遵循 XDG 规范的配置文件，使用 INI 格式。
 
 ```ini
 [general]
-# 启用数据库日志记录
-database = true
-
 # PostgreSQL 连接字符串
 database_path = "host=localhost user=myuser dbname=mydb"
 
@@ -282,6 +279,8 @@ cleanup_days = 30
 ### 配置文件优先级
 
 命令行选项的优先级高于配置文件。配置文件中的设置会被命令行选项覆盖。
+
+> **注意**：`database` 开关仅由 CLI `-d` 选项控制，配置文件不读取 `database` 键；`database_path`/`silent`/`cleanup_days` 之外的其他键会被忽略。
 
 ### 保存配置
 
