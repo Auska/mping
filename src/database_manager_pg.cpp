@@ -12,6 +12,7 @@
 
 #include "constants.h"
 #include "ip_validator.h"
+#include "schema_migration.h"
 
 namespace {
 
@@ -44,50 +45,6 @@ void printRecentRecordsHeader() {
 
 void printRecentRecordRow(const std::string& timestamp, int delay, bool success) {
     std::println(std::cout, "{}\t{}ms\t{}", timestamp, delay, success ? "Success" : "Failed");
-}
-
-// UTC 时间格式化为文本（gmtime_r 线程安全）
-std::string formatUtcTime(time_t t, const char* fmt) {
-    struct tm tmBuf{};
-    gmtime_r(&t, &tmBuf);
-    char buf[32];
-    strftime(buf, sizeof(buf), fmt, &tmBuf);
-    return buf;
-}
-
-// 对齐到 UTC 日界（UTC 无夏令时，time_t 按 86400 整除即当日零点）
-time_t utcDayFloor(time_t t) {
-    return (t / 86400) * 86400;
-}
-
-// 公历日 → 1970-01-01 起天数（Hinnant 算法，纯标准 C++）
-constexpr int daysFromCivil(int y, unsigned m, unsigned d) {
-    y -= m <= 2;
-    const int era      = (y >= 0 ? y : y - 399) / 400;
-    const unsigned yoe = static_cast<unsigned>(y - era * 400);
-    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return era * 146097 + static_cast<int>(doe) - 719468;
-}
-
-// "YYYY-MM-DD" → UTC 日界秒；格式非法返回 -1
-time_t parseUtcDate(const std::string& ymd) {
-    if (ymd.size() != 10 || ymd[4] != '-' || ymd[7] != '-') {
-        return -1;
-    }
-    for (size_t i = 0; i < ymd.size(); i++) {
-        if (i != 4 && i != 7 && !std::isdigit(static_cast<unsigned char>(ymd[i]))) {
-            return -1;
-        }
-    }
-    const int y = std::stoi(ymd.substr(0, 4));
-    const int m = std::stoi(ymd.substr(5, 2));
-    const int d = std::stoi(ymd.substr(8, 2));
-    if (m < 1 || m > 12 || d < 1 || d > 31) {
-        return -1;
-    }
-    return static_cast<time_t>(daysFromCivil(y, static_cast<unsigned>(m), static_cast<unsigned>(d)))
-           * 86400;
 }
 
 }  // namespace
@@ -163,9 +120,7 @@ PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
     return res;
 }
 
-bool DatabaseManagerPG::initialize() {
-    std::lock_guard<std::mutex> lock(dbMutex);
-
+bool DatabaseManagerPG::connectSession() {
     PGconn* rawConn = PQconnectdb(connInfo.c_str());
     if (rawConn == nullptr) {
         std::println(std::cerr, "Failed to allocate database connection (out of memory)");
@@ -208,7 +163,11 @@ bool DatabaseManagerPG::initialize() {
                      PQresultErrorMessage(res));
     }
     PQclear(res);
+    return true;
+}
 
+// 建表 + 旧库迁移（幂等）：查询命令与写入命令共用；不预建分区
+bool DatabaseManagerPG::prepareSchema() {
     // 创建hosts表，用于存储IP地址与主机名的映射关系
     const char* createHostsTableSQL = R"(
         CREATE TABLE IF NOT EXISTS hosts (
@@ -226,14 +185,9 @@ bool DatabaseManagerPG::initialize() {
         return false;
     }
 
-    // ping_results 按日 RANGE 分区表：旧版普通表先迁移（改名保留数据后回填），
-    // 再预建未来日分区（UTC 日界，分区名 ping_results_YYYYMMDD）
-    if (!migratePingResultsPartitioning()) {
+    // ping_results 按日 RANGE 分区表：旧版普通表先迁移（改名保留数据后回填）
+    if (!SchemaMigrator::migratePingResultsPartitioning(*this)) {
         std::println(std::cerr, "Failed to create ping_results partition table");
-        return false;
-    }
-    if (!ensurePingResultsPartitions(ConfigDefaults::PING_PARTITION_LOOKAHEAD_DAYS)) {
-        std::println(std::cerr, "Failed to create ping_results daily partitions");
         return false;
     }
 
@@ -268,210 +222,45 @@ bool DatabaseManagerPG::initialize() {
     }
 
     // 迁移旧 TIMESTAMP 列为 TIMESTAMPTZ
-    if (!migrateSchema()) {
+    if (!SchemaMigrator::migrateSchema(*this)) {
         std::println(std::cerr, "Warning: Schema migration incomplete, continuing anyway");
     }
 
     return true;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-//  ping_results 按日分区
-// ══════════════════════════════════════════════════════════════════════════
-
-std::string DatabaseManagerPG::tableRelkind(const std::string& name) {
-    const std::string sql =
-        "SELECT relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-        "WHERE n.nspname = 'public' AND c.relname = '"
-        + name + "'";
-    PGresult* res = executeQueryWithResult(sql);
-    if (!res) {
-        return {};
-    }
-    std::string relkind = PQntuples(res) > 0 ? PQgetvalue(res, 0, 0) : "";
-    PQclear(res);
-    return relkind;
-}
-
-bool DatabaseManagerPG::createPartitionForDay(time_t day) {
-    const std::string d1  = formatUtcTime(day, "%Y-%m-%d");
-    const std::string d2  = formatUtcTime(day + 86400, "%Y-%m-%d");
-    const std::string nm  = formatUtcTime(day, "%Y%m%d");
-    const std::string sql = "CREATE TABLE IF NOT EXISTS ping_results_" + nm
-                            + " PARTITION OF ping_results FOR VALUES FROM ('" + d1
-                            + " 00:00:00') TO ('" + d2 + " 00:00:00')";
-    return executeQuery(sql);
-}
-
-bool DatabaseManagerPG::createPartitionForTimestamp(const std::string& timestamp) {
-    // 会话时区固定为 UTC，时间戳文本前 10 个字符即该行的 UTC 日期
-    if (timestamp.size() < 10) {
+bool DatabaseManagerPG::initialize() {
+    std::lock_guard<std::mutex> lock(dbMutex);
+    if (!connectSession()) {
         return false;
     }
-    const time_t day = parseUtcDate(timestamp.substr(0, 10));
-    if (day < 0) {
+    if (!prepareSchema()) {
         return false;
     }
-    return createPartitionForDay(day);
-}
-
-bool DatabaseManagerPG::ensurePingResultsPartitions(int lookaheadDays) {
-    // 尚未分区（如表不存在或迁移失败）时无需预建，插入时的补建逻辑兜底
-    if (tableRelkind("ping_results") != "p") {
-        return true;
-    }
-    const time_t day = utcDayFloor(time(nullptr));
-    for (int i = 0; i < lookaheadDays; i++) {
-        if (!createPartitionForDay(day + static_cast<time_t>(i) * 86400)) {
-            return false;
-        }
+    // 预建今天起未来分区（UTC 日界），避免插入时逐行触发 23514 补建
+    if (!SchemaMigrator::
+            ensurePingResultsPartitions(*this, ConfigDefaults::PING_PARTITION_LOOKAHEAD_DAYS)) {
+        std::println(std::cerr, "Failed to create ping_results daily partitions");
+        return false;
     }
     return true;
 }
 
-bool DatabaseManagerPG::migratePingResultsPartitioning() {
-    // 1. 旧版普通表：改名保留数据（序列一并改名，避免与新分区表的 SERIAL 序列同名冲突）；
-    //    幂等：重复执行时表已不叫 ping_results，自动跳过
-    if (tableRelkind("ping_results") == "r") {
-        if (!executeQuery("ALTER TABLE ping_results RENAME TO ping_results_legacy")) {
-            return false;
-        }
-        if (!executeQuery("ALTER SEQUENCE IF EXISTS ping_results_id_seq RENAME TO "
-                          "ping_results_legacy_id_seq")) {
-            return false;
-        }
-    }
-
-    // 2. 创建按日 RANGE 分区表（幂等）；PRIMARY KEY 必须包含分区键
-    const char* createPingResultsTableSQL = R"(
-        CREATE TABLE IF NOT EXISTS ping_results (
-            id SERIAL,
-            ip TEXT NOT NULL,
-            hostname TEXT,
-            delay INTEGER,
-            success BOOLEAN,
-            timestamp TIMESTAMPTZ NOT NULL,
-            PRIMARY KEY (id, timestamp)
-        ) PARTITION BY RANGE (timestamp);
-    )";
-    if (!executeQuery(createPingResultsTableSQL)) {
-        std::println(std::cerr, "Failed to create ping_results table");
+// 查询命令无需预建分区（不写入）；插入路径的 23514 补建逻辑兜底
+bool DatabaseManagerPG::initializeForQuery() {
+    std::lock_guard<std::mutex> lock(dbMutex);
+    if (!connectSession()) {
         return false;
     }
-
-    // 分区索引：建在父表上，自动传播到每个分区
-    const char* createPingResultsIndexSQL = R"(
-        CREATE INDEX IF NOT EXISTS idx_ping_results_ip ON ping_results (ip);
-        CREATE INDEX IF NOT EXISTS idx_ping_results_timestamp ON ping_results (timestamp);
-    )";
-    if (!executeQuery(createPingResultsIndexSQL)) {
-        std::println(std::cerr, "Failed to create indexes for ping_results table");
-        return false;
-    }
-
-    // 3. 回填旧表数据（幂等：中断后重试不产生重复行）；旧表及旧序列随后清除
-    if (tableRelkind("ping_results_legacy") == "r") {
-        PGresult* range = executeQueryWithResult(
-            "SELECT MIN(timestamp), MAX(timestamp) FROM ping_results_legacy");
-        if (!range) {
-            return false;
-        }
-        // 为旧数据覆盖的每一天补建分区（会话 UTC，时间戳文本前 10 字符即 UTC 日期）
-        if (PQntuples(range) > 0 && !PQgetisnull(range, 0, 0)) {
-            const time_t minDay = parseUtcDate(std::string(PQgetvalue(range, 0, 0)).substr(0, 10));
-            const time_t maxDay = parseUtcDate(std::string(PQgetvalue(range, 0, 1)).substr(0, 10));
-            if (minDay < 0 || maxDay < 0) {
-                PQclear(range);
-                return false;
-            }
-            for (time_t day = minDay; day <= maxDay; day += 86400) {
-                if (!createPartitionForDay(day)) {
-                    PQclear(range);
-                    return false;
-                }
-            }
-        }
-        PQclear(range);
-
-        // 复制数据（保留原 id），ON CONFLICT 保证失败重跑不重复
-        const char* copySQL = R"(
-            INSERT INTO ping_results (id, ip, hostname, delay, success, timestamp)
-            SELECT id, ip, hostname, delay, success, timestamp FROM ping_results_legacy
-            ON CONFLICT DO NOTHING;
-        )";
-        if (!executeQuery(copySQL)) {
-            return false;
-        }
-
-        // 序列推进到现有最大 id 之后
-        if (!executeQuery("SELECT setval('ping_results_id_seq', "
-                          "COALESCE((SELECT MAX(id) + 1 FROM ping_results), 1), false)")) {
-            return false;
-        }
-
-        if (!executeQuery("DROP TABLE ping_results_legacy")) {
-            return false;
-        }
-        std::println(std::cout, "Migrated ping_results to daily-partitioned layout");
-    }
-    return true;
-}
-
-bool DatabaseManagerPG::migrateSchema() {
-    // 确保会话时区为 UTC，这样现有 TIMESTAMP 数据会被正确解释为 UTC 时间
-    if (!executeQuery("SET TIME ZONE 'UTC';")) {
-        std::println(std::cerr, "Failed to set timezone to UTC for migration");
-        return false;
-    }
-
-    // 查询所有需要迁移的列：类型为 timestamp without time zone 的列
-    const char* checkSQL = R"(
-        SELECT table_name, column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND data_type = 'timestamp without time zone'
-          AND table_name IN ('hosts', 'ping_results', 'alerts', 'recovery_records')
-        ORDER BY table_name, column_name;
-    )";
-
-    PGresult* res = executeQueryWithResult(checkSQL);
-    if (!res) {
-        std::println(std::cerr, "Failed to check schema for migration");
-        return false;
-    }
-
-    int colCount = PQntuples(res);
-    if (colCount == 0) {
-        PQclear(res);
-        return true;  // 没有需要迁移的列
-    }
-
-    std::println(std::cout, "Migrating {} timestamp column(s) to timestamptz...", colCount);
-
-    for (int i = 0; i < colCount; i++) {
-        std::string table  = PQgetvalue(res, i, 0);
-        std::string column = PQgetvalue(res, i, 1);
-
-        std::string alterSQL =
-            "ALTER TABLE " + table + " ALTER COLUMN " + column + " TYPE TIMESTAMPTZ";
-        std::println(std::cout, "  Migrating {}.{}...", table, column);
-
-        if (!executeQuery(alterSQL)) {
-            std::println(std::cerr, "Failed to migrate {}.{} to TIMESTAMPTZ", table, column);
-            PQclear(res);
-            return false;
-        }
-    }
-
-    PQclear(res);
-    std::println(std::cout, "Schema migration completed.");
-    return true;
+    return prepareSchema();
 }
 
 // 辅助函数：批量插入主机信息
-// 在单事务内逐行执行参数化插入，防止 SQL 注入；任一失败回滚并返回 false
+// 单事务内参数化插入，防止 SQL 注入；任一失败回滚并返回 false。
+// 先试单条多行 VALUES（一次往返）；分区表遇缺失分区（SQLSTATE 23514）
+// 时回退到逐行 SAVEPOINT 插入，补建目标日分区后重试该行（最多一次）
 bool DatabaseManagerPG::insertBatch(
-    const char* sql,
+    const char* sqlPrefix, const char* rowTemplate, const char* sqlSuffix,
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
     const std::function<void(const std::tuple<std::string, std::string, short, bool, std::string>&,
                              std::vector<std::string>&)>& serialize,
@@ -488,60 +277,135 @@ bool DatabaseManagerPG::insertBatch(
         return false;
     }
 
+    // 一次性序列化全部行（批量与逐行回退共用）
+    std::vector<std::vector<std::string>> allParams;
+    allParams.reserve(rows.size());
     for (const auto& row : rows) {
-        // 把一行序列化为参数文本（存活至 PQexecParams 返回）
         std::vector<std::string> params;
         serialize(row, params);
+        allParams.push_back(std::move(params));
+    }
+    const size_t nParamsPerRow = allParams.front().size();
 
-        std::vector<const char*> values;
-        std::vector<int> lengths;
-        values.reserve(params.size());
-        lengths.reserve(params.size());
-        for (const auto& p : params) {
+    // 行模板占位符重编号：$N → $(offset+N)；模板中可含字面量（如 NOW()、::integer）
+    const auto applyOffset = [](const std::string& tpl, size_t offset) {
+        std::string out;
+        out.reserve(tpl.size() + 8);
+        for (size_t i = 0; i < tpl.size(); i++) {
+            if (tpl[i] != '$') {
+                out += tpl[i];
+                continue;
+            }
+            size_t j = i + 1;
+            size_t n = 0;
+            while (j < tpl.size() && std::isdigit(static_cast<unsigned char>(tpl[j]))) {
+                n = n * 10 + static_cast<size_t>(tpl[j] - '0');
+                j++;
+            }
+            out += "$" + std::to_string(n + offset);
+            i = j - 1;
+        }
+        return out;
+    };
+
+    // 参数格式：0 表示文本格式
+    std::vector<int> formats(allParams.size() * nParamsPerRow, 0);
+
+    // ─── 批量路径：单条多行 VALUES 语句 ───
+    const std::string tpl(rowTemplate);
+    std::string all;
+    all.reserve(allParams.size() * (tpl.size() + 8));
+    for (size_t r = 0; r < allParams.size(); r++) {
+        if (r > 0) {
+            all += ",";
+        }
+        all += applyOffset(tpl, r * nParamsPerRow);
+    }
+    const std::string bulkSQL = std::string(sqlPrefix) + all + sqlSuffix;
+
+    std::vector<const char*> values;
+    std::vector<int> lengths;
+    values.reserve(allParams.size() * nParamsPerRow);
+    lengths.reserve(allParams.size() * nParamsPerRow);
+    for (const auto& rowParams : allParams) {
+        for (const auto& p : rowParams) {
             values.push_back(p.c_str());
             lengths.push_back(static_cast<int>(p.length()));
         }
-        // 参数格式：0 表示文本格式
-        std::vector<int> formats(params.size(), 0);
+    }
 
-        // 分区表：PG 中语句报错会使事务进入 aborted 状态，必须先 SAVEPOINT 保护，
-        // 目标日分区缺失（SQLSTATE 23514）时回滚到保存点、补建分区后重试（最多一次）
+    PGresult* res = PQexecParams(conn.get(), bulkSQL.c_str(), static_cast<int>(values.size()),
+                                 nullptr, values.data(), lengths.data(), formats.data(), 0);
+    if (PQresultStatus(res) == PGRES_COMMAND_OK) {
+        PQclear(res);
+        if (!executeQuery("COMMIT;")) {
+            std::println(std::cerr, "Failed to commit batch insert");
+            return false;
+        }
+        return true;
+    }
+
+    // 分区缺失（23514）→ 回退逐行插入；其余错误直接失败
+    const char* sqlstate     = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+    const bool needsFallback = partitionedInsert && sqlstate && std::strcmp(sqlstate, "23514") == 0;
+    if (!needsFallback) {
+        std::println(std::cerr, "Failed to insert batch: {}", PQresultErrorMessage(res));
+        PQclear(res);
+        executeQuery("ROLLBACK;");
+        return false;
+    }
+    PQclear(res);
+
+    // ─── 回退路径：逐行 SAVEPOINT 插入（分区补建后重试同一行）───
+    const std::string rowSQL = std::string(sqlPrefix) + tpl + sqlSuffix;
+    for (size_t i = 0; i < rows.size(); i++) {
+        const auto& params = allParams[i];
+
+        std::vector<const char*> rowValues;
+        std::vector<int> rowLengths;
+        rowValues.reserve(params.size());
+        rowLengths.reserve(params.size());
+        for (const auto& p : params) {
+            rowValues.push_back(p.c_str());
+            rowLengths.push_back(static_cast<int>(p.length()));
+        }
+        std::vector<int> rowFormats(params.size(), 0);
+
         bool inserted = false;
         bool retried  = false;
         while (!inserted) {
-            if (partitionedInsert && !executeQuery("SAVEPOINT sp_ping_row;")) {
+            if (!executeQuery("SAVEPOINT sp_ping_row;")) {
                 std::println(std::cerr, "Failed to create savepoint for batch insert");
                 executeQuery("ROLLBACK;");
                 return false;
             }
-            PGresult* res = PQexecParams(conn.get(), sql, static_cast<int>(params.size()), nullptr,
-                                         values.data(), lengths.data(), formats.data(), 0);
-            if (PQresultStatus(res) == PGRES_COMMAND_OK) {
+            PGresult* rowRes =
+                PQexecParams(conn.get(), rowSQL.c_str(), static_cast<int>(params.size()), nullptr,
+                             rowValues.data(), rowLengths.data(), rowFormats.data(), 0);
+            if (PQresultStatus(rowRes) == PGRES_COMMAND_OK) {
                 inserted = true;
-                PQclear(res);
-                if (partitionedInsert) {
-                    executeQuery("RELEASE SAVEPOINT sp_ping_row;");
-                }
+                PQclear(rowRes);
+                executeQuery("RELEASE SAVEPOINT sp_ping_row;");
                 break;
             }
-            const char* sqlstate = PQresultErrorField(res, PG_DIAG_SQLSTATE);
-            if (partitionedInsert && !retried && sqlstate && std::strcmp(sqlstate, "23514") == 0) {
+            const char* rowSqlstate = PQresultErrorField(rowRes, PG_DIAG_SQLSTATE);
+            if (!retried && rowSqlstate && std::strcmp(rowSqlstate, "23514") == 0) {
                 // 先回滚到保存点撤销失败语句对事务的污染，再补建分区并重试同一行
                 executeQuery("ROLLBACK TO SAVEPOINT sp_ping_row;");
                 executeQuery("RELEASE SAVEPOINT sp_ping_row;");
-                PQclear(res);
+                PQclear(rowRes);
                 retried = true;
-                if (!createPartitionForTimestamp(std::get<4>(row))) {
+                if (!SchemaMigrator::createPartitionForTimestamp(*this, std::get<4>(rows[i]))) {
                     std::println(std::cerr, "Failed to create partition for record of IP {}",
-                                 std::get<0>(row));
+                                 std::get<0>(rows[i]));
                     executeQuery("ROLLBACK;");
                     return false;
                 }
                 continue;
             }
-            std::println(std::cerr, "Failed to insert record for IP {}: {}", std::get<0>(row),
-                         PQresultErrorMessage(res));
-            PQclear(res);
+            std::println(std::cerr, "Failed to insert record for IP {}: {}", std::get<0>(rows[i]),
+                         PQresultErrorMessage(rowRes));
+            PQclear(rowRes);
             executeQuery("ROLLBACK;");
             return false;
         }
@@ -559,16 +423,19 @@ bool DatabaseManagerPG::insertBatch(
 // 批量插入或更新主机信息（UPSERT）
 bool DatabaseManagerPG::insertHostsBatch(
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    const char* insertSQL =
-        "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) "
-        "VALUES ($1, $2, NOW(), $4::boolean, $3::integer) "
-        "ON CONFLICT (ip) DO UPDATE SET "
+    // 前缀为 INSERT 头部（不含 VALUES），模板含行内字面量（NOW()、::cast），
+    // 后缀跟在行模板之后（由 insertBatch 拼接；占位符只在行模板中出现）
+    const char* sqlPrefix =
+        "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) VALUES";
+    const char* rowTemplate = "($1, $2, NOW(), $4::boolean, $3::integer)";
+    const char* sqlSuffix =
+        " ON CONFLICT (ip) DO UPDATE SET "
         "hostname = EXCLUDED.hostname, "
         "last_seen = EXCLUDED.last_seen, "
         "last_status = EXCLUDED.last_status, "
-        "last_delay = EXCLUDED.last_delay;";
+        "last_delay = EXCLUDED.last_delay";
     return insertBatch(
-        insertSQL, results,
+        sqlPrefix, rowTemplate, sqlSuffix, results,
         [](const auto& row, std::vector<std::string>& params) {
             params = {std::get<0>(row), std::get<1>(row), std::to_string(std::get<2>(row)),
                       std::get<3>(row) ? "true" : "false"};
@@ -579,11 +446,11 @@ bool DatabaseManagerPG::insertHostsBatch(
 // 批量插入ping结果
 bool DatabaseManagerPG::insertPingResultsBatch(
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    const char* insertSQL =
-        "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) "
-        "VALUES ($1, $2, $3::integer, $4::boolean, $5)";
+    const char* sqlPrefix =
+        "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) VALUES";
+    const char* rowTemplate = "($1, $2, $3::integer, $4::boolean, $5)";
     return insertBatch(
-        insertSQL, results,
+        sqlPrefix, rowTemplate, "", results,
         [](const auto& row, std::vector<std::string>& params) {
             params = {std::get<0>(row), std::get<1>(row), std::to_string(std::get<2>(row)),
                       std::get<3>(row) ? "true" : "false", std::get<4>(row)};

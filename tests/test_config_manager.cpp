@@ -127,23 +127,24 @@ TEST_CASE("ConfigManager alerts option", "[config]") {
         REQUIRE(config.queryAlerts == 7);
     }
 
-    SECTION("-a option with space-separated days") {
+    SECTION("-a space-separated days become filename") {
+        // 天数仅支持附加形式（-a7）；"-a 7" 中 7 按位置参数处理为文件名
         reset_getopt();
         ConfigManager configManager;
         auto argv = Argv({"mping", "-a", "7"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.queryAlerts == 7);
-        REQUIRE(config.filename == "");
+        REQUIRE(config.queryAlerts == -2);
+        REQUIRE(config.filename == "7");
     }
 
-    SECTION("-a with days and positional file") {
+    SECTION("-a bare with positional file") {
         reset_getopt();
         ConfigManager configManager;
-        auto argv = Argv({"mping", "-a", "7", "extra.txt"});
+        auto argv = Argv({"mping", "-a", "extra.txt"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.queryAlerts == 7);
+        REQUIRE(config.queryAlerts == -2);
         REQUIRE(config.filename == "extra.txt");
     }
 
@@ -181,14 +182,15 @@ TEST_CASE("ConfigManager recovery option", "[config]") {
         REQUIRE(config.queryRecoveryRecords == 14);
     }
 
-    SECTION("-r option with space-separated days") {
+    SECTION("-r space-separated days become filename") {
+        // 天数仅支持附加形式（-r14）；"-r 14" 中 14 按位置参数处理为文件名
         reset_getopt();
         ConfigManager configManager;
         auto argv = Argv({"mping", "-r", "14"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.queryRecoveryRecords == 14);
-        REQUIRE(config.filename == "");
+        REQUIRE(config.queryRecoveryRecords == -2);
+        REQUIRE(config.filename == "14");
     }
 
     SECTION("-r option with invalid days (negative)") {
@@ -238,15 +240,16 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         REQUIRE(config.cleanupDays == 90);
     }
 
-    SECTION("-C option with space-separated days") {
+    SECTION("-C space-separated days become filename") {
+        // 天数仅支持附加形式（-C90）；"-C 90" 中 90 按位置参数处理为文件名
         reset_getopt();
         ConfigManager configManager;
         auto argv = Argv({"mping", "-C", "90"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
-        REQUIRE(config.cleanupDays == 90);
-        REQUIRE(config.filename == "");
+        REQUIRE(config.cleanupDays == 30);  // 默认 30 天
+        REQUIRE(config.filename == "90");
     }
 
     SECTION("-C with non-numeric positional keeps filename") {

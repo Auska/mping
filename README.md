@@ -119,13 +119,13 @@ ctest --test-dir build
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -a
 
 # Query alerts within the last 7 days
-./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -a 7
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -a7
 
 # Clean up data older than 30 days (default)
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -C
 
 # Clean up data older than 60 days
-./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -C 60
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -C60
 
 # Use a different input file
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -f my_hosts.txt

@@ -56,6 +56,7 @@ set(MPING_COMMON_DEFINES
 add_executable(mping
     src/main.cpp
     src/database_manager_pg.cpp
+    src/schema_migration.cpp
     ${MPING_COMMON_SOURCES})
 target_include_directories(mping PRIVATE src include)
 target_compile_definitions(mping PRIVATE ${MPING_COMMON_DEFINES})
@@ -68,6 +69,7 @@ if(MPING_BUILD_TESTS)
     add_executable(mping_tests
         ${MPING_COMMON_SOURCES}
         src/database_manager_pg.cpp
+        src/schema_migration.cpp
         tests/test_main.cpp
         tests/test_commands.cpp
         tests/test_database_manager.cpp

@@ -26,12 +26,12 @@ std::unique_ptr<DatabaseManagerPG> Command::createDatabase() {
     return std::make_unique<DatabaseManagerPG>(config.databasePath);
 }
 
-bool Command::initializeDatabase(DatabaseManagerPG& db) {
-    if (!db.initialize()) {
+bool Command::initializeDatabase(DatabaseManagerPG& db, bool precreatePartitions) {
+    const bool ok = precreatePartitions ? db.initialize() : db.initializeForQuery();
+    if (!ok) {
         std::println(std::cerr, "Failed to initialize database");
-        return false;
     }
-    return true;
+    return ok;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -40,7 +40,7 @@ bool Command::initializeDatabase(DatabaseManagerPG& db) {
 
 int QueryIPCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(*db)) {
+    if (!initializeDatabase(*db, /*precreatePartitions=*/false)) {
         return 1;
     }
     db->queryIPStatistics(config.queryIP);
@@ -53,7 +53,7 @@ int QueryIPCommand::execute() {
 
 int CleanupCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(*db)) {
+    if (!initializeDatabase(*db, /*precreatePartitions=*/false)) {
         return 1;
     }
     db->cleanupOldData(config.cleanupDays);
@@ -66,24 +66,18 @@ int CleanupCommand::execute() {
 
 int QueryAlertsCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(*db)) {
+    if (!initializeDatabase(*db, /*precreatePartitions=*/false)) {
         return 1;
     }
 
     auto alerts = db->getActiveAlerts(config.queryAlerts);
+    const std::string daysSuffix =
+        config.queryAlerts >= 0 ? " within the last " + std::to_string(config.queryAlerts) + " days"
+                                : "";
     if (alerts.empty()) {
-        if (config.queryAlerts >= 0) {
-            std::println(std::cout, "No active alerts within the last {} days.",
-                         config.queryAlerts);
-        } else {
-            std::println(std::cout, "No active alerts.");
-        }
+        std::println(std::cout, "No active alerts{}.", daysSuffix);
     } else {
-        if (config.queryAlerts >= 0) {
-            std::println(std::cout, "Active alerts within the last {} days:", config.queryAlerts);
-        } else {
-            std::println(std::cout, "Active alerts:");
-        }
+        std::println(std::cout, "Active alerts{}:", daysSuffix);
         std::println(std::cout, "IP Address\tHostname\tCreated Time");
         std::println(std::cout, "------------------------------------------------");
         for (const auto& [ip, hostname, createdTime] : alerts) {
@@ -99,25 +93,19 @@ int QueryAlertsCommand::execute() {
 
 int QueryRecoveryCommand::execute() {
     auto db = createDatabase();
-    if (!initializeDatabase(*db)) {
+    if (!initializeDatabase(*db, /*precreatePartitions=*/false)) {
         return 1;
     }
 
     auto records = db->getRecoveryRecords(config.queryRecoveryRecords);
+    const std::string daysSuffix =
+        config.queryRecoveryRecords >= 0
+            ? " within the last " + std::to_string(config.queryRecoveryRecords) + " days"
+            : "";
     if (records.empty()) {
-        if (config.queryRecoveryRecords >= 0) {
-            std::println(std::cout, "No recovery records within the last {} days.",
-                         config.queryRecoveryRecords);
-        } else {
-            std::println(std::cout, "No recovery records.");
-        }
+        std::println(std::cout, "No recovery records{}.", daysSuffix);
     } else {
-        if (config.queryRecoveryRecords >= 0) {
-            std::println(std::cout,
-                         "Recovery records within the last {} days:", config.queryRecoveryRecords);
-        } else {
-            std::println(std::cout, "Recovery records:");
-        }
+        std::println(std::cout, "Recovery records{}:", daysSuffix);
         std::println(std::cout, "IP Address\tHostname\tAlert Time\t\tRecovery Time");
         std::println(std::cout,
                      "-----------------------------------------------------------------------------"

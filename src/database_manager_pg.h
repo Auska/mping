@@ -12,6 +12,8 @@
 #include <tuple>
 #include <vector>
 
+class SchemaMigrator;
+
 // 单个 IP 的 ping 统计结果
 struct PingStatistics {
     int totalRecords   = 0;
@@ -26,6 +28,8 @@ struct PingStatistics {
 
 // PostgreSQL 数据库操作类（唯一数据库后端）
 class DatabaseManagerPG {
+    friend class SchemaMigrator;
+
    private:
     std::string connInfo;
     std::mutex dbMutex;
@@ -48,6 +52,12 @@ class DatabaseManagerPG {
     // 执行返回结果的查询
     PGresult* executeQueryWithResult(const std::string& query);
 
+    // 连接数据库并配置会话（时区 UTC、消息级别、keepalive）；失败返回 false
+    bool connectSession();
+
+    // 建表 + 旧库迁移（幂等）；不预建分区
+    bool prepareSchema();
+
     // 批量插入主机信息
     bool insertHostsBatch(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
@@ -56,30 +66,18 @@ class DatabaseManagerPG {
     bool insertPingResultsBatch(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
-    // 在单事务内逐行执行参数化插入；serialize 把一行映射为参数文本列。
-    // partitionedInsert 为 true 时，目标日分区缺失（SQLSTATE 23514）会自动补建分区并重试该行
+    // 单事务内参数化插入。先试单条多行 VALUES（一次往返）；分区表遇缺失分区
+    // （SQLSTATE 23514）时回退到逐行 SAVEPOINT 插入，补建目标日分区后重试。
+    // sqlPrefix 为 INSERT 头部，rowTemplate 为单行 VALUES 模板（可含 NOW()/::cast 等字面量，
+    // 占位符 $N 在批量拼接时按行重编号），sqlSuffix 跟在行模板之后（如 ON CONFLICT 子句）；
+    // serialize 把一行映射为参数文本列
     bool insertBatch(
-        const char* sql,
+        const char* sqlPrefix, const char* rowTemplate, const char* sqlSuffix,
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
         const std::function<
             void(const std::tuple<std::string, std::string, short, bool, std::string>&,
                  std::vector<std::string>&)>& serialize,
         bool partitionedInsert);
-
-    // 将旧 TIMESTAMP 列迁移为 TIMESTAMPTZ
-    bool migrateSchema();
-
-    // ─── ping_results 按日分区（UTC 日界，分区名 ping_results_YYYYMMDD）───
-    // 查询 public 模式下表的 relkind；不存在返回空串
-    std::string tableRelkind(const std::string& name);
-    // 旧版普通表迁移为按日分区表（改名保留数据、回填、幂等）
-    bool migratePingResultsPartitioning();
-    // 为今天起 lookaheadDays 天预建日分区
-    bool ensurePingResultsPartitions(int lookaheadDays);
-    // 为 UTC 日 day 建分区（幂等）
-    bool createPartitionForDay(time_t day);
-    // 由时间戳文本解析其 UTC 日期并补建分区（插入遇 23514 时调用）
-    bool createPartitionForTimestamp(const std::string& timestamp);
 
     // 查询执行器：days >= 0 时用 $1 参数化过滤，否则执行全部记录查询
     PGresult* executeOptionalDays(const char* sqlDays, const char* sqlAll, int days);
@@ -92,8 +90,11 @@ class DatabaseManagerPG {
     explicit DatabaseManagerPG(const std::string& connectionInfo);
     ~DatabaseManagerPG() = default;
 
-    // 初始化数据库
+    // 初始化数据库（连接 + 建表 + 迁移 + 预建未来分区；Ping 写入路径）
     bool initialize();
+
+    // 仅查询路径的轻量初始化（连接 + 建表 + 迁移，不预建分区）
+    bool initializeForQuery();
 
     // 批量插入ping结果
     bool insertPingResults(

@@ -23,7 +23,7 @@ std::string getCurrentTimestamp() {
 
 PingResult pingHost(const std::string& ip, const std::string& hostname, int pingCount,
                     int timeoutSeconds) {
-    bool success   = false;
+    bool success = false;
     // 哨兵值；仅成功路径写入真实延迟，失败时返回 0（不再用超时值冒充延迟）
     short minDelay = std::numeric_limits<short>::max();
 

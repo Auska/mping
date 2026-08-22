@@ -34,7 +34,8 @@ class Command {
 
     // 根据配置和编译选项创建数据库实例
     std::unique_ptr<DatabaseManagerPG> createDatabase();
-    bool initializeDatabase(DatabaseManagerPG& db);
+    // precreatePartitions=false：仅查询命令使用，跳过未来分区预建（不写入）
+    bool initializeDatabase(DatabaseManagerPG& db, bool precreatePartitions = true);
 };
 
 // ─── 查询 IP 统计 ────────────────────────────────────────────────────────
