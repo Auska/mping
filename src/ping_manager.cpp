@@ -31,12 +31,19 @@ PingResult pingHost(const std::string& ip, const std::string& hostname, int ping
     unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
     icmplib::IPAddress target(ip);
 
-    for (int i = 0; i < pingCount; ++i) {
-        auto result = icmplib::Ping(target, timeoutMs, static_cast<uint16_t>(i + 1));
-        if (result.response == icmplib::PingResult::ResponseType::Success) {
-            success  = true;
-            minDelay = std::min(minDelay, static_cast<short>(result.delay));
+    try {
+        // 复用同一 raw socket 连续发包，避免每包重复创建/关闭 socket
+        icmplib::PingSocket socket(target.GetType());
+        for (int i = 0; i < pingCount; ++i) {
+            auto result =
+                icmplib::Ping(socket.GetSocket(), target, timeoutMs, static_cast<uint16_t>(i + 1));
+            if (result.response == icmplib::PingResult::ResponseType::Success) {
+                success  = true;
+                minDelay = std::min(minDelay, static_cast<short>(result.delay));
+            }
         }
+    } catch (const std::exception&) {
+        // socket 创建/发包失败按主机不可达处理（与原行为一致）
     }
 
     return {.ip        = ip,

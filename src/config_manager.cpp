@@ -8,6 +8,29 @@
 
 #include "version_info.h"
 
+namespace {
+
+// 解析可选的 -a/-r/-C 天数参数；optarg 为空时使用 defaultDays（哨兵值或默认值）
+bool parseOptionalDays(const char* optarg, const char* optionName, int& value, int defaultDays) {
+    if (optarg == nullptr) {
+        value = defaultDays;
+        return true;
+    }
+    try {
+        value = std::stoi(optarg);
+        if (value < 0) {
+            std::println(std::cerr, "{} days must be a non-negative integer.", optionName);
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        std::println(std::cerr, "Invalid value for {} days: {}", optionName, optarg);
+        return false;
+    }
+}
+
+}  // namespace
+
 ConfigManager::ConfigManager(bool loadConfig) {
     // 根据参数决定是否加载配置文件
     config.loadConfigFile = loadConfig;
@@ -130,58 +153,25 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.queryIP = optarg;
                 break;
             case 'a':
-                config.queryAlerts = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
-                // 如果提供了参数，解析天数值
-                if (optarg != nullptr) {
-                    try {
-                        config.queryAlerts = std::stoi(optarg);
-                        if (config.queryAlerts < 0) {
-                            std::println(std::cerr, "Alert days must be a non-negative integer.");
-                            return false;
-                        }
-                    } catch (const std::exception& e) {
-                        std::println(std::cerr, "Invalid value for alert days: {}", optarg);
-                        return false;
-                    }
+                if (!parseOptionalDays(optarg, "Alert", config.queryAlerts,
+                                       ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS)) {
+                    return false;
                 }
                 break;
             case 'r':
-                config.queryRecoveryRecords = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
-                // 如果提供了参数，解析天数值
-                if (optarg != nullptr) {
-                    try {
-                        config.queryRecoveryRecords = std::stoi(optarg);
-                        if (config.queryRecoveryRecords < 0) {
-                            std::println(std::cerr,
-                                         "Recovery record days must be a non-negative integer.");
-                            return false;
-                        }
-                    } catch (const std::exception& e) {
-                        std::println(std::cerr, "Invalid value for recovery record days: {}",
-                                     optarg);
-                        return false;
-                    }
+                if (!parseOptionalDays(optarg, "Recovery record", config.queryRecoveryRecords,
+                                       ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS)) {
+                    return false;
                 }
                 break;
             case 's':
                 config.silentMode = true;
                 break;
             case 'C':
-                // 如果提供了参数，使用指定的值，否则默认为30天
                 config.enableDatabase = true;  // 清理功能需要启用数据库
-                if (optarg != nullptr) {
-                    try {
-                        config.cleanupDays = std::stoi(optarg);
-                        if (config.cleanupDays < 0) {
-                            std::println(std::cerr, "Cleanup days must be a non-negative integer.");
-                            return false;
-                        }
-                    } catch (const std::exception& e) {
-                        std::println(std::cerr, "Invalid value for cleanup days: {}", optarg);
-                        return false;
-                    }
-                } else {
-                    config.cleanupDays = ConfigDefaults::DEFAULT_CLEANUP_DAYS;
+                if (!parseOptionalDays(optarg, "Cleanup", config.cleanupDays,
+                                       ConfigDefaults::DEFAULT_CLEANUP_DAYS)) {
+                    return false;
                 }
                 break;
             case 'c':

@@ -295,52 +295,60 @@ class ICMPEcho {
     ICMPEcho& operator=(const ICMPEcho&) = delete;
     static Result Execute(const IPAddress& target, unsigned timeout = ICMPLIB_TIMEOUT_1S,
                           uint16_t sequence = 1, uint8_t ttl = 255) {
-        Result result = {Result::ResponseType::Timeout, static_cast<double>(timeout), IPAddress(),
-                         0, 0};
         try {
             ICMPSocket sock(target.GetType(), ttl);
-
-            ICMPRequest request(target.GetType(), sequence);
-            request.Send(sock.GetSocket(), target);
-            auto start = std::chrono::high_resolution_clock::now();
-            IPAddress source(target);
-
-            while (true) {
-                ICMPResponse response;
-                bool recv = response.Receive(sock.GetSocket(), source, timeout);
-                auto end  = std::chrono::high_resolution_clock::now();
-                if (!recv) {
-                    unsigned delta = static_cast<unsigned>(
-                        std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
-                    if (delta >= timeout) {
-                        break;
-                    }
-                    timeout -= delta;
-                    continue;
-                }
-
-                result.response = (source.GetType() != IPAddress::Type::IPv6)
-                                      ? GetResponseType(request, response)
-                                      : GetResponseTypeV6(request, response);
-                if (result.response != Result::ResponseType::Timeout) {
-                    result.delay =
-                        static_cast<double>(
-                            std::chrono::duration_cast<std::chrono::microseconds>(end - start)
-                                .count())
-                        / 1000.0;
-                    result.address = source;
-                    result.code    = response.GetICMPHeader().code;
-                    result.ttl     = response.GetTTL();
-                    break;
-                }
-            }
+            return ExecuteOnSocket(sock.GetSocket(), target, timeout, sequence);
         } catch (...) {
             return {Result::ResponseType::Failure, 0, IPAddress(), 0, 0};
+        }
+    }
+
+    // 在已打开的 socket 上执行单次 ping，供复用同一 socket 连续发包
+    static Result ExecuteOnSocket(ICMPLIB_SOCKET sock, const IPAddress& target, unsigned timeout,
+                                  uint16_t sequence = 1) {
+        Result result = {Result::ResponseType::Timeout, static_cast<double>(timeout), IPAddress(),
+                         0, 0};
+        ICMPRequest request(target.GetType(), sequence);
+        try {
+            request.Send(sock, target);
+        } catch (...) {
+            return {Result::ResponseType::Failure, 0, IPAddress(), 0, 0};
+        }
+        auto start = std::chrono::high_resolution_clock::now();
+        IPAddress source(target);
+
+        while (true) {
+            ICMPResponse response;
+            bool recv = response.Receive(sock, source, timeout);
+            auto end  = std::chrono::high_resolution_clock::now();
+            if (!recv) {
+                unsigned delta = static_cast<unsigned>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
+                if (delta >= timeout) {
+                    break;
+                }
+                timeout -= delta;
+                continue;
+            }
+
+            result.response = (source.GetType() != IPAddress::Type::IPv6)
+                                  ? GetResponseType(request, response)
+                                  : GetResponseTypeV6(request, response);
+            if (result.response != Result::ResponseType::Timeout) {
+                result.delay =
+                    static_cast<double>(
+                        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count())
+                    / 1000.0;
+                result.address = source;
+                result.code    = response.GetICMPHeader().code;
+                result.ttl     = response.GetTTL();
+                break;
+            }
         }
         return result;
     }
 
-   private:
+   public:
     struct ICMPHeader {
         uint8_t type;
         uint8_t code;
@@ -608,8 +616,24 @@ class ICMPEcho {
 using PingResult       = ICMPEcho::Result;
 using PingResponseType = ICMPEcho::Result::ResponseType;
 
+// RAII raw socket：按目标地址族创建，供复用同一 socket 连续发包
+class PingSocket {
+   public:
+    PingSocket(IPAddress::Type type, uint8_t ttl = 255) : sock(type, ttl) {}
+    ICMPLIB_SOCKET GetSocket() { return sock.GetSocket(); }
+
+   private:
+    ICMPEcho::ICMPSocket sock;
+};
+
 inline PingResult Ping(const IPAddress& target, unsigned timeout = ICMPLIB_TIMEOUT_1S,
                        uint16_t sequence = 1, uint8_t ttl = 255) {
     return ICMPEcho::Execute(target, timeout, sequence, ttl);
+}
+
+// 复用外部 socket 的单次 ping（省略 socket 创建，供连续发包）
+inline PingResult Ping(ICMPLIB_SOCKET sock, const IPAddress& target,
+                       unsigned timeout = ICMPLIB_TIMEOUT_1S, uint16_t sequence = 1) {
+    return ICMPEcho::ExecuteOnSocket(sock, target, timeout, sequence);
 }
 }  // namespace icmplib
