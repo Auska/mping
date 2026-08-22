@@ -20,6 +20,9 @@ struct ConfigDefaults {
     static constexpr const char* DEFAULT_FILENAME = "ip.txt";
     // ping 结果默认保留天数
     static constexpr int DEFAULT_PING_RESULTS_CLEANUP_DAYS = 30;
+    // ping_results 按日分区（UTC 日界）：initialize 时预建今天起 N 天的分区；
+    // 更早日期（停机恢复、历史回填）在插入遇到 23514 时自动补建
+    static constexpr int PING_PARTITION_LOOKAHEAD_DAYS = 30;
 
     // 查询模式的特殊标记
     static constexpr int QUERY_MODE_ENABLED_NO_DAYS = -2;  // 已启用但未指定天数

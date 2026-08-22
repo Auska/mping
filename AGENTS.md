@@ -92,7 +92,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 
 ```
 DatabaseManagerPG（PostgreSQL, PGconn*）
-表名: hosts / ping_results / alerts / recovery_records
+表名: hosts / ping_results（按日分区）/ alerts / recovery_records
 IP 校验: IPValidator（ip_validator.h）
 ```
 
@@ -162,7 +162,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - 可配置的 ping 包数量（默认 3 个包）
 - 主机状态监控和告警功能
 - 恢复记录跟踪
-- 数据自动清理功能
+- 数据自动清理功能（ping_results 按日分区，过期日分区整体 DROP）
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
 - 支持通过 `cmake --install` 安装到系统
@@ -297,6 +297,7 @@ mping -S /path/to/config.conf
 
 - **`hosts` 表**：存储 IP 地址和主机名及创建和最后访问时间戳
 - **`ping_results` 表**：统一存储所有 ping 结果（IP、主机名、延迟、成功状态和时间戳）
+  - **按日分区**：RANGE 分区（UTC 日界），分区名 `ping_results_YYYYMMDD`；`initialize()` 预建今天起未来 30 天分区，插入遇缺失分区（SQLSTATE 23514）时自动回滚到 SAVEPOINT 并补建分区后重试；旧版普通表在 `initialize()` 时自动迁移（改名保留数据、回填、序列对齐，幂等）
 - **`alerts` 表**：跟踪主机状态告警
 - **`recovery_records` 表**：记录主机从故障中恢复的信息
 
@@ -304,7 +305,7 @@ mping -S /path/to/config.conf
 
 `-C` / `--cleanup` 命令清理以下表中的旧数据：
 
-- **`ping_results`**：删除超过指定天数的记录
+- **`ping_results`**：删除超过指定天数的记录（整日早于截止期的分区直接 DROP，瞬时释放磁盘；边界日内过期行用 DELETE 精确删除）
 - **`alerts`**：删除超过指定天数的告警记录
 - **`recovery_records`**：删除超过指定天数的恢复记录
 
@@ -325,7 +326,7 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **43 个测试用例**。其中 6 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **331 个断言**。
+当前共 **44 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **342 个断言**。
 
 ### 运行测试
 

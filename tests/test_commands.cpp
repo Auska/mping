@@ -1,4 +1,5 @@
 #include <catch2/catch_all.hpp>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -274,6 +275,37 @@ TEST_CASE("PingCommand with database enabled", "[commands][ping][db]") {
     REQUIRE(hosts.size() >= 1);
 
     std::filesystem::remove(testFile);
+}
+
+TEST_CASE("PingCommand database daily partitioning", "[commands][partition][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
+    }
+    createPopulatedDatabase();
+
+    auto db = std::make_unique<DatabaseManagerPG>(testPgConnstr());
+    REQUIRE(db->initialize());
+    // 分区表初始化幂等：重复执行迁移与预建分区均安全
+    REQUIRE(db->initialize());
+
+    // 历史日期数据：目标日无预建分区，插入应自动补建分区并成功（SQLSTATE 23514 重试路径）
+    for (const auto& date : {"2024-06-15 08:00:00", "2024-06-16 08:00:00"}) {
+        std::vector<std::tuple<std::string, std::string, short, bool, std::string>> rows = {
+            {"192.168.1.9", "host9", 5, true, date},
+        };
+        REQUIRE(db->insertPingResults(rows));
+    }
+
+    // 当日数据：命中 initialize 预建分区
+    char buf[32];
+    time_t now = time(nullptr);
+    struct tm tmBuf{};
+    gmtime_r(&now, &tmBuf);
+    strftime(buf, sizeof(buf), "%Y-%m-%d 12:00:00", &tmBuf);
+    std::vector<std::tuple<std::string, std::string, short, bool, std::string>> rows = {
+        {"192.168.1.9", "host9", 5, true, buf},
+    };
+    REQUIRE(db->insertPingResults(rows));
 }
 
 TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts][db]") {

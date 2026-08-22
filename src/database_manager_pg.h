@@ -3,6 +3,7 @@
 
 #include <libpq-fe.h>
 
+#include <ctime>
 #include <functional>
 #include <map>
 #include <memory>
@@ -55,16 +56,30 @@ class DatabaseManagerPG {
     bool insertPingResultsBatch(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
-    // 在单事务内逐行执行参数化插入；serialize 把一行映射为参数文本列
+    // 在单事务内逐行执行参数化插入；serialize 把一行映射为参数文本列。
+    // partitionedInsert 为 true 时，目标日分区缺失（SQLSTATE 23514）会自动补建分区并重试该行
     bool insertBatch(
         const char* sql,
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
         const std::function<
             void(const std::tuple<std::string, std::string, short, bool, std::string>&,
-                 std::vector<std::string>&)>& serialize);
+                 std::vector<std::string>&)>& serialize,
+        bool partitionedInsert);
 
     // 将旧 TIMESTAMP 列迁移为 TIMESTAMPTZ
     bool migrateSchema();
+
+    // ─── ping_results 按日分区（UTC 日界，分区名 ping_results_YYYYMMDD）───
+    // 查询 public 模式下表的 relkind；不存在返回空串
+    std::string tableRelkind(const std::string& name);
+    // 旧版普通表迁移为按日分区表（改名保留数据、回填、幂等）
+    bool migratePingResultsPartitioning();
+    // 为今天起 lookaheadDays 天预建日分区
+    bool ensurePingResultsPartitions(int lookaheadDays);
+    // 为 UTC 日 day 建分区（幂等）
+    bool createPartitionForDay(time_t day);
+    // 由时间戳文本解析其 UTC 日期并补建分区（插入遇 23514 时调用）
+    bool createPartitionForTimestamp(const std::string& timestamp);
 
     // 查询执行器：days >= 0 时用 $1 参数化过滤，否则执行全部记录查询
     PGresult* executeOptionalDays(const char* sqlDays, const char* sqlAll, int days);
