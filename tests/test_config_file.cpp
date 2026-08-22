@@ -1,4 +1,5 @@
 #include <catch2/catch_all.hpp>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 
@@ -63,36 +64,10 @@ TEST_CASE("ConfigFile basic operations", "[config_file]") {
     }
 }
 
-TEST_CASE("ConfigFile XDG paths", "[config_file][xdg]") {
-    SECTION("Get XDG config home") {
-        std::string configHome = ConfigFile::getXDGConfigHome();
-        REQUIRE(configHome.empty() == false);
-    }
-
-    SECTION("Get default config paths") {
-        auto paths = ConfigFile::getDefaultConfigPaths();
-        REQUIRE(paths.empty() == false);
-        REQUIRE(paths.size() >= 6);
-    }
-
-    SECTION("Create XDG config dir") {
-        std::string configHome = ConfigFile::getXDGConfigHome();
-        if (!configHome.empty()) {
-            std::string mpingConfigDir = configHome + "/mping_test";
-
-            // Clean up if exists
-            if (std::filesystem::exists(mpingConfigDir)) {
-                std::filesystem::remove_all(mpingConfigDir);
-            }
-
-            REQUIRE(ConfigFile::createXDGConfigDir() == true);
-
-            // Clean up
-            if (std::filesystem::exists(mpingConfigDir)) {
-                std::filesystem::remove_all(mpingConfigDir);
-            }
-        }
-    }
+TEST_CASE("ConfigFile default config path", "[config_file]") {
+    const char* home = std::getenv("HOME");
+    REQUIRE(home != nullptr);
+    REQUIRE(ConfigFile::getDefaultConfigPath() == std::string(home) + "/.config/mping/config.json");
 }
 
 TEST_CASE("ConfigFile parsing", "[config_file]") {

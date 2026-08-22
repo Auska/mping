@@ -54,8 +54,8 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **`utils.cpp`/`utils.h`**：文件操作等实用函数
 - **`ping_manager.cpp`/`ping_manager.h`**：核心 ping 功能实现（线程池优化）
 - **`database_manager_pg.cpp`/`database_manager_pg.h`**：PostgreSQL 数据库操作
-- **`config_manager.cpp`/`config_manager.h`**：配置管理（支持 XDG 规范的配置文件）
-- **`config_file.cpp`/`config_file.h`**：INI 格式配置文件解析器（遵循 XDG 规范）
+- **`config_manager.cpp`/`config_manager.h`**：配置管理
+- **`config_file.cpp`/`config_file.h`**：INI 格式配置文件解析器
 - **`ip_validator.h`**：IP 地址校验工具
 - **`version_info.cpp`/`version_info.h`**：版本信息管理
 
@@ -63,7 +63,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 
 ```
 解析命令行参数（ConfigManager）
-  → 加载配置文件（ConfigFile，XDG 规范搜索路径）
+  → 加载配置文件（ConfigFile，默认 $HOME/.config/mping/config.json）
   → 命令行选项覆盖配置文件设置
   ┌── [queryIP 非空] → 创建 QueryIPCommand → 查询统计 → 结束
   ├── [cleanupDays >= 0] → 创建 CleanupCommand → 清理数据 → 结束
@@ -166,9 +166,8 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
 - 支持通过 `cmake --install` 安装到系统
-- **配置文件支持**：遵循 XDG 规范的配置文件管理
-  - 支持 INI 格式配置文件
-  - 自动从 XDG 配置目录加载配置
+- **配置文件支持**：INI 格式配置文件（默认路径 $HOME/.config/mping/config.json）
+  - 自动从默认路径加载配置
   - 支持命令行选项覆盖配置文件设置
   - 支持保存当前配置到文件
 
@@ -233,7 +232,7 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 - `-s`: 静默模式，抑制输出
 - `-c <path>`: 从指定路径加载配置文件
 - `-N`: 不加载配置文件
-- `-S [path]`: 保存当前配置到文件（默认：XDG 配置目录）
+- `-S [path]`: 保存当前配置到文件（默认：`$HOME/.config/mping/config.json`）
 
 > **注意**：`-d` 参数必须是 PostgreSQL 连接字符串（libpq 格式），如 `host=localhost user=myuser dbname=mydb`。
 
@@ -251,16 +250,7 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 
 ## 配置文件
 
-mping 支持遵循 XDG 规范的配置文件，使用 INI 格式。
-
-### 配置文件搜索路径（按优先级）
-
-1. `$XDG_CONFIG_HOME/mping/config`
-2. `$XDG_CONFIG_DIRS/mping/config`
-3. `~/.config/mping/config`
-4. `~/.mpingrc`
-5. `./mping.conf`
-6. `./.mpingrc`
+mping 支持配置文件（INI 格式），默认路径为 `$HOME/.config/mping/config.json`。
 
 ### 配置文件格式
 
@@ -287,7 +277,7 @@ cleanup_days = 30
 使用 `-S` 选项保存当前配置：
 
 ```bash
-# 保存到默认路径（$XDG_CONFIG_HOME/mping/config）
+# 保存到默认路径（$HOME/.config/mping/config.json）
 mping -S
 
 # 保存到指定路径

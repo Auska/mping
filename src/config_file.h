@@ -4,7 +4,6 @@
 #include <map>
 #include <optional>
 #include <string>
-#include <vector>
 
 class ConfigFile {
    private:
@@ -17,9 +16,6 @@ class ConfigFile {
     // 解析一行配置
     bool parseLine(const std::string& line, std::string& currentSection);
 
-    // 获取 XDG 配置目录列表（getDefaultConfigPaths 内部使用）
-    static std::vector<std::string> getXDGConfigDirs();
-
    public:
     ConfigFile()                        = default;
     ~ConfigFile()                       = default;
@@ -28,9 +24,6 @@ class ConfigFile {
 
     // 从指定路径加载配置文件
     bool load(const std::string& path);
-
-    // 按照 XDG 规范自动查找并加载配置文件
-    bool loadFromXDGPaths();
 
     // 保存配置文件到指定路径
     bool save(const std::string& path);
@@ -62,14 +55,8 @@ class ConfigFile {
     // 获取配置文件路径
     const std::string& getFilePath() const noexcept;
 
-    // 获取 XDG 配置目录路径
-    static std::string getXDGConfigHome();
-
-    // 获取默认配置文件路径列表（按优先级排序）
-    static std::vector<std::string> getDefaultConfigPaths();
-
-    // 创建 XDG 配置目录（如果不存在）
-    static bool createXDGConfigDir();
+    // 获取默认配置文件路径（$HOME/.config/mping/config.json，HOME 未设置时返回空串）
+    static std::string getDefaultConfigPath();
 };
 
 #endif  // CONFIG_FILE_H

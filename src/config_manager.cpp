@@ -63,8 +63,9 @@ bool ConfigManager::loadConfigFile() {
         std::println(std::cerr, "Warning: Failed to load config file: {}", config.configFilePath);
         return false;
     } else {
-        // 按照 XDG 规范自动查找配置文件
-        if (configFile.loadFromXDGPaths()) {
+        // 使用默认配置文件路径
+        const std::string defaultPath = ConfigFile::getDefaultConfigPath();
+        if (!defaultPath.empty() && configFile.load(defaultPath)) {
             applyConfigFileSettings();
             return true;
         }
@@ -94,13 +95,10 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
     std::string savePath = path.empty() ? configFile.getFilePath() : path;
 
     if (savePath.empty()) {
-        // 使用默认的 XDG 配置路径
-        std::string configHome = ConfigFile::getXDGConfigHome();
-        if (!configHome.empty()) {
-            savePath = configHome + "/mping/config";
-            ConfigFile::createXDGConfigDir();
-        } else {
-            std::println(std::cerr, "Error: Cannot determine XDG config home directory");
+        // 使用默认的配置文件路径
+        savePath = ConfigFile::getDefaultConfigPath();
+        if (savePath.empty()) {
+            std::println(std::cerr, "Error: Cannot determine home directory");
             return false;
         }
     }
@@ -266,14 +264,8 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "  -N\t\tDo not load configuration file");
     std::println(std::cout, "  -S [path]\tSave current configuration to file");
     std::println(std::cout, "");
-    std::println(std::cout, "Configuration File (XDG compliant):");
-    std::println(std::cout, "  Default search paths (in order):");
-    std::println(std::cout, "    1. $XDG_CONFIG_HOME/mping/config");
-    std::println(std::cout, "    2. $XDG_CONFIG_DIRS/mping/config");
-    std::println(std::cout, "    3. ~/.config/mping/config");
-    std::println(std::cout, "    4. ~/.mpingrc");
-    std::println(std::cout, "    5. ./mping.conf");
-    std::println(std::cout, "    6. ./.mpingrc");
+    std::println(std::cout, "Configuration File:");
+    std::println(std::cout, "  Default path: $HOME/.config/mping/config.json");
     std::println(std::cout, "");
     std::println(std::cout,
                  "Default behavior: If no file specified and database enabled, read hosts from "

@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 
 std::string ConfigFile::trim(const std::string& str) const {
     size_t first = str.find_first_not_of(" \t\n\r");
@@ -67,15 +66,6 @@ bool ConfigFile::load(const std::string& path) {
         }
     }
     return true;
-}
-
-bool ConfigFile::loadFromXDGPaths() {
-    for (const auto& path : getDefaultConfigPaths()) {
-        if (load(path)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool ConfigFile::save(const std::string& path) {
@@ -223,92 +213,10 @@ const std::string& ConfigFile::getFilePath() const noexcept {
     return filePath;
 }
 
-std::string ConfigFile::getXDGConfigHome() {
-    const char* env = std::getenv("XDG_CONFIG_HOME");
-    if (env && env[0] != '\0') {
-        return env;
-    }
-
-    // 默认值：$HOME/.config
+std::string ConfigFile::getDefaultConfigPath() {
     const char* home = std::getenv("HOME");
-    if (home && home[0] != '\0') {
-        return std::string(home) + "/.config";
+    if (home == nullptr || home[0] == '\0') {
+        return "";
     }
-
-    return "";
-}
-
-std::vector<std::string> ConfigFile::getXDGConfigDirs() {
-    std::vector<std::string> dirs;
-
-    const char* env = std::getenv("XDG_CONFIG_DIRS");
-    if (env && env[0] != '\0') {
-        std::stringstream ss(env);
-        std::string dir;
-        while (std::getline(ss, dir, ':')) {
-            if (!dir.empty()) {
-                dirs.push_back(dir);
-            }
-        }
-    }
-
-    // 默认值：/etc/xdg
-    if (dirs.empty()) {
-        dirs.push_back("/etc/xdg");
-    }
-
-    return dirs;
-}
-
-std::vector<std::string> ConfigFile::getDefaultConfigPaths() {
-    std::vector<std::string> paths;
-
-    // 1. $XDG_CONFIG_HOME/mping/config
-    std::string configHome = getXDGConfigHome();
-    if (!configHome.empty()) {
-        paths.push_back(configHome + "/mping/config");
-    }
-
-    // 2. $XDG_CONFIG_DIRS/mping/config
-    for (const auto& dir : getXDGConfigDirs()) {
-        paths.push_back(dir + "/mping/config");
-    }
-
-    // 3. ~/.config/mping/config
-    const char* home = std::getenv("HOME");
-    if (home && home[0] != '\0') {
-        paths.push_back(std::string(home) + "/.config/mping/config");
-    }
-
-    // 4. ~/.mpingrc
-    if (home && home[0] != '\0') {
-        paths.push_back(std::string(home) + "/.mpingrc");
-    }
-
-    // 5. ./mping.conf
-    paths.push_back("mping.conf");
-
-    // 6. ./.mpingrc
-    paths.push_back(".mpingrc");
-
-    return paths;
-}
-
-bool ConfigFile::createXDGConfigDir() {
-    std::string configHome = getXDGConfigHome();
-    if (configHome.empty()) {
-        return false;
-    }
-
-    std::string mpingConfigDir = configHome + "/mping";
-
-    try {
-        if (!std::filesystem::exists(mpingConfigDir)) {
-            std::filesystem::create_directories(mpingConfigDir);
-        }
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to create XDG config directory: " << mpingConfigDir << std::endl;
-        return false;
-    }
+    return std::string(home) + "/.config/mping/config.json";
 }

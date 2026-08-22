@@ -9,7 +9,7 @@ The project follows a command-pattern architecture with modular design:
 - `utils.cpp`/`utils.h`: Utility functions for file operations
 - `ping_manager.cpp`/`ping_manager.h`: Core ping functionality (concurrent, thread pool)
 - `database_manager_pg.cpp`/`database_manager_pg.h`: Database operations (PostgreSQL)
-- `config_manager.cpp`/`config_manager.h`: Configuration management (XDG-compliant)
+- `config_manager.cpp`/`config_manager.h`: Configuration management
 - `config_file.cpp`/`config_file.h`: INI-style config file parser
 
 ## Features
@@ -20,7 +20,7 @@ The project follows a command-pattern architecture with modular design:
 - Database logging of ping results (PostgreSQL)
 - Query statistics for specific IP addresses
 - Alert tracking with automatic recovery recording
-- Config file support (XDG-compliant, INI format)
+- Config file support (INI format, default: `~/.config/mping/config.json`)
 - Two-round ping strategy (1 fast packet, retry with 5 packets to reduce false positives)
 - Pre-alert confirmation: first-time failures are retried 3 times before an alert is raised (avoids false alerts from transient failures)
 
@@ -43,7 +43,7 @@ The project follows a command-pattern architecture with modular design:
 - `-s`: Silent mode, suppress output
 - `-c <path>`: Load configuration from specified file
 - `-N`: Do not load configuration file
-- `-S [path]`: Save current configuration to file (default: XDG config dir)
+- `-S [path]`: Save current configuration to file (default: `$HOME/.config/mping/config.json`)
 
 ### Default behavior
 
