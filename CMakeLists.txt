@@ -24,7 +24,7 @@ endif()
 
 option(MPING_BUILD_TESTS "Build the mping test programs" OFF)
 
-add_compile_options(-Wall -Wextra -Wpedantic)
+add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 
 # UTC compile timestamp, injected as a macro (see src/version_info.cpp)
 string(TIMESTAMP MPING_COMPILE_TIME "%Y-%m-%d %H:%M:%S" UTC)

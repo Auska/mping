@@ -116,6 +116,7 @@ class IPAddress {
     }
     virtual ~IPAddress() { delete address; }
     IPAddress& operator=(const IPAddress& source) {
+        if (this == &source) return *this;
         delete address;
         switch (source.GetType()) {
             case Type::IPv6:
@@ -130,6 +131,7 @@ class IPAddress {
         return *this;
     }
     IPAddress& operator=(IPAddress&& source) {
+        if (this == &source) return *this;
         delete address;
         address        = source.address;
         source.address = reinterpret_cast<sockaddr*>(new sockaddr_in);

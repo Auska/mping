@@ -66,6 +66,10 @@ bool DatabaseManagerPG::ensureConnected() {
     std::println(std::cerr, "Database connection lost. Attempting to reconnect...");
     PQfinish(conn.get());
     PGconn* rawConn = PQconnectdb(connInfo.c_str());
+    if (rawConn == nullptr) {
+        std::println(std::cerr, "Failed to allocate database connection (out of memory)");
+        return false;
+    }
     conn.reset(rawConn);
 
     if (PQstatus(conn.get()) != CONNECTION_OK) {
@@ -81,6 +85,10 @@ bool DatabaseManagerPG::executeQuery(const std::string& query) {
     }
 
     PGresult* res = PQexec(conn.get(), query.c_str());
+    if (res == nullptr) {
+        std::println(std::cerr, "Query failed: out of memory");
+        return false;
+    }
     if (PQresultStatus(res) != PGRES_COMMAND_OK && PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
@@ -96,6 +104,10 @@ PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
     }
 
     PGresult* res = PQexec(conn.get(), query.c_str());
+    if (res == nullptr) {
+        std::println(std::cerr, "Query failed: out of memory");
+        return nullptr;
+    }
     if (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Query failed: {}", PQresultErrorMessage(res));
         PQclear(res);
@@ -108,6 +120,10 @@ bool DatabaseManagerPG::initialize() {
     std::lock_guard<std::mutex> lock(dbMutex);
 
     PGconn* rawConn = PQconnectdb(connInfo.c_str());
+    if (rawConn == nullptr) {
+        std::println(std::cerr, "Failed to allocate database connection (out of memory)");
+        return false;
+    }
     conn.reset(rawConn);
 
     if (PQstatus(conn.get()) != CONNECTION_OK) {
@@ -779,12 +795,8 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
         char* hostname     = PQgetvalue(res, row, 1);
         char* created_time = PQgetvalue(res, row, 2);
 
-        if (ip) {
-            std::string ipStr       = ip ? ip : "";
-            std::string hostnameStr = hostname ? hostname : "";
-            std::string timeStr     = created_time ? created_time : "";
-            alerts.emplace_back(ipStr, hostnameStr, timeStr);
-        }
+        alerts.emplace_back(ip ? ip : "", hostname ? hostname : "",
+                            created_time ? created_time : "");
     }
 
     PQclear(res);

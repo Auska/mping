@@ -3,9 +3,15 @@
 ## 快速参考
 
 ```bash
-# 配置并构建（PostgreSQL 是唯一数据库后端, Release）
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+# 配置并构建（PostgreSQL 是唯一数据库后端, Release；零警告构建 -Werror）
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release     # 或 cmake --preset release
+cmake --build build -j   # 或 cmake --build --preset release
+
+# 测试构建与 ASan/UBSan 检查（CMake Presets）
+cmake --preset debug     # Debug + 单测（build-debug/）
+cmake --preset asan      # ASan/UBSan + 单测（build-asan/）
+cmake --build --preset asan
+ctest --test-dir build-asan
 
 # 构建（含测试）
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON

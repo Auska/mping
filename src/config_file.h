@@ -97,7 +97,7 @@ class ConfigFile {
     bool isLoaded() const noexcept;
 
     // 获取配置文件路径
-    std::string getFilePath() const noexcept;
+    const std::string& getFilePath() const noexcept;
 
     // 获取 XDG 配置目录路径
     static std::string getXDGConfigHome();

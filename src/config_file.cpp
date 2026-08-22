@@ -340,7 +340,7 @@ bool ConfigFile::isLoaded() const noexcept {
     return loaded;
 }
 
-std::string ConfigFile::getFilePath() const noexcept {
+const std::string& ConfigFile::getFilePath() const noexcept {
     return filePath;
 }
 

@@ -25,9 +25,14 @@ struct Argv {
     std::vector<char*> argv;
 
     Argv(std::initializer_list<const char*> args) {
+        // 先完整填充再取指针：emplace_back 触发 vector 扩容会把已有 string 移动走，
+        // 对 SSO 短字符串，移动后先前 data() 指针悬空（ASan heap-use-after-free）
+        storage.reserve(args.size());
         for (const char* a : args) {
             storage.emplace_back(a);
-            argv.push_back(storage.back().data());
+        }
+        for (auto& s : storage) {
+            argv.push_back(s.data());
         }
     }
 

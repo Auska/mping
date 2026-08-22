@@ -1,5 +1,7 @@
-# Build directory
+# Build directories (configure/build presets + sanitizer builds)
 build/
+build-debug/
+build-asan/
 
 # Binary files
 mping

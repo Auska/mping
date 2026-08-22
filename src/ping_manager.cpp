@@ -3,11 +3,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <ctime>
-#include <iomanip>
+#include <format>
 #include <iostream>
 #include <print>
-#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -17,13 +15,9 @@
 namespace {
 
 std::string getCurrentTimestamp() {
-    auto now    = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-    gmtime_r(&time_t, &tm);
-    std::stringstream ss;
-    ss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
-    return ss.str();
+    // sys_seconds 原生以 UTC 表示，直接格式化，无需 gmtime_r/stringstream
+    return std::format("{:%Y-%m-%d %H:%M:%S}", std::chrono::time_point_cast<std::chrono::seconds>(
+                                                   std::chrono::system_clock::now()));
 }
 
 PingResult pingHost(const std::string& ip, const std::string& hostname, int pingCount,
