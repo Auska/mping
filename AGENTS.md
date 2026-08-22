@@ -79,6 +79,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
        → 处理告警（带状态检测，只写入状态变化）
        → 清理过期 ping 记录
        → 输出结果
+       → [check_interval > 0] 等待间隔秒数后回到"读取主机列表"循环（持续检查模式）
 ```
 
 ### 命令模式优势
@@ -170,6 +171,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
   - 自动从默认路径加载配置
   - 支持命令行选项覆盖配置文件设置
   - 支持保存当前配置到文件
+- 持续检查模式：配置文件 `check_interval`（秒）> 0 时按固定间隔循环检查，主机清单与告警状态每轮重载，`-S` 可落盘
 
 ## 构建系统
 
@@ -264,13 +266,16 @@ silent = false
 
 # 清理 n 天前的数据
 cleanup_days = 30
+
+# 持续检查模式：>0 = 每轮检查间隔秒数；0 或缺失 = 单次运行
+check_interval = 60
 ```
 
 ### 配置文件优先级
 
 命令行选项的优先级高于配置文件。配置文件中的设置会被命令行选项覆盖。
 
-> **注意**：`database` 开关仅由 CLI `-d` 选项控制，配置文件不读取 `database` 键；`database_path`/`silent`/`cleanup_days` 之外的其他键会被忽略。
+> **注意**：`database` 开关仅由 CLI `-d` 选项控制，配置文件不读取 `database` 键；`database_path`/`silent`/`cleanup_days`/`check_interval` 之外的其他键会被忽略。
 
 ### 保存配置
 

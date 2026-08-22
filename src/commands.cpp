@@ -1,10 +1,12 @@
 #include "commands.h"
 
+#include <chrono>
 #include <iostream>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <print>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -229,58 +231,69 @@ void PingCommand::printResults(const std::vector<PingResult>& allResults) {
 }
 
 int PingCommand::execute() {
-    // 1. 加载主机列表（文件 / 数据库 hosts 表 / 默认文件）
+    // 持续检查模式：checkIntervalSeconds > 0 时按固定间隔循环执行（0 = 单次运行，向后兼容）。
+    // 数据库连接与 PingManager 线程池跨轮复用；主机清单与告警状态每轮重新加载，变更即时生效。
+    // ponytail: 任何一轮失败即中止（返回 1），由外部 supervisor 重启；如需自愈可改为记录错误后继续。
     std::unique_ptr<DatabaseManagerPG> db;
-    std::map<std::string, std::string> hosts;
-    if (!loadHosts(db, hosts)) {
-        return 1;
-    }
-
-    // 2. 数据库模式：先查询当前告警状态（滑动窗口分级与告警处理共用一次查询）
     std::unordered_set<std::string> alertIPs;
-    if (config.enableDatabase) {
-        if (!db) {
-            db = createDatabase();
-            if (!initializeDatabase(*db)) {
+    PingManager pingManager;
+
+    for (;;) {
+        // 1. 加载主机列表（文件 / 数据库 hosts 表 / 默认文件）
+        std::map<std::string, std::string> hosts;
+        if (!loadHosts(db, hosts)) {
+            return 1;
+        }
+
+        // 2. 数据库模式：查询当前告警状态（每轮刷新，告警新增/恢复判定依赖最新状态）
+        if (config.enableDatabase) {
+            if (!db) {
+                db = createDatabase();
+                if (!initializeDatabase(*db)) {
+                    return 1;
+                }
+            }
+            alertIPs.clear();
+            for (const auto& alert : db->getActiveAlerts()) {
+                alertIPs.insert(std::get<0>(alert));
+            }
+        }
+
+        // 3. 滑动窗口并发检查（取代原先"快速探测 + 失败重试 + 告警确认重试"的重叠流程）：
+        //    - 未告警主机：连续 DOWN_CONFIRM_WINDOW 轮失败才判定离线，对抗瞬时波动，避免误报告警
+        //    - 已告警主机（持续故障）：单轮快检，只记录当前状态
+        std::map<std::string, std::string> alertedHosts;
+        std::map<std::string, std::string> pendingHosts;
+        for (const auto& [ip, hostname] : hosts) {
+            if (alertIPs.count(ip)) {
+                alertedHosts[ip] = hostname;
+            } else {
+                pendingHosts[ip] = hostname;
+            }
+        }
+
+        std::vector<PingResult> allResults =
+            pingManager.checkHosts(pendingHosts, ConfigDefaults::DOWN_CONFIRM_WINDOW);
+        auto alertedResults = pingManager.checkHosts(alertedHosts, 1);
+        allResults.insert(allResults.end(), std::make_move_iterator(alertedResults.begin()),
+                          std::make_move_iterator(alertedResults.end()));
+
+        // 4. 落库、告警处理与自动清理（仅数据库模式）
+        if (config.enableDatabase) {
+            if (!persistResults(allResults, db, alertIPs)) {
                 return 1;
             }
         }
-        for (const auto& alert : db->getActiveAlerts()) {
-            alertIPs.insert(std::get<0>(alert));
+
+        // 5. 输出结果（静默模式跳过）
+        if (!config.silentMode) {
+            printResults(allResults);
         }
-    }
 
-    // 3. 滑动窗口并发检查（取代原先"快速探测 + 失败重试 + 告警确认重试"的重叠流程）：
-    //    - 未告警主机：连续 DOWN_CONFIRM_WINDOW 轮失败才判定离线，对抗瞬时波动，避免误报告警
-    //    - 已告警主机（持续故障）：单轮快检，只记录当前状态
-    std::map<std::string, std::string> alertedHosts;
-    std::map<std::string, std::string> pendingHosts;
-    for (const auto& [ip, hostname] : hosts) {
-        if (alertIPs.count(ip)) {
-            alertedHosts[ip] = hostname;
-        } else {
-            pendingHosts[ip] = hostname;
+        // 持续检查模式：轮间等待后进入下一轮；Ctrl+C 直接终止进程（结果已逐轮落盘，无丢失）
+        if (config.checkIntervalSeconds <= 0) {
+            return 0;
         }
+        std::this_thread::sleep_for(std::chrono::seconds(config.checkIntervalSeconds));
     }
-
-    PingManager pingManager;
-    std::vector<PingResult> allResults =
-        pingManager.checkHosts(pendingHosts, ConfigDefaults::DOWN_CONFIRM_WINDOW);
-    auto alertedResults = pingManager.checkHosts(alertedHosts, 1);
-    allResults.insert(allResults.end(), std::make_move_iterator(alertedResults.begin()),
-                      std::make_move_iterator(alertedResults.end()));
-
-    // 4. 落库、告警处理与自动清理（仅数据库模式）
-    if (config.enableDatabase) {
-        if (!persistResults(allResults, db, alertIPs)) {
-            return 1;
-        }
-    }
-
-    // 5. 输出结果（静默模式跳过）
-    if (!config.silentMode) {
-        printResults(allResults);
-    }
-
-    return 0;
 }

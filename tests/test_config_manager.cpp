@@ -1,7 +1,10 @@
 #include <unistd.h>
 
 #include <catch2/catch_all.hpp>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -53,6 +56,45 @@ TEST_CASE("ConfigManager default values", "[config]") {
         REQUIRE(config.cleanupDays == -1);
         REQUIRE(config.queryAlerts == -1);
         REQUIRE(config.queryRecoveryRecords == -1);
+        REQUIRE(config.checkIntervalSeconds == 0);  // 默认单次运行
+    }
+}
+
+TEST_CASE("ConfigManager check_interval from config file", "[config]") {
+    const auto loadWithInterval = [](const std::string& value) {
+        std::string testPath = "/tmp/test_interval_XXXXXX.conf";
+        int fd               = mkstemps(testPath.data(), 5);
+        REQUIRE(fd >= 0);
+        close(fd);
+
+        std::ofstream file(testPath);
+        file << "[general]\ncheck_interval = " << value << "\n";
+        file.close();
+
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-c", testPath.c_str()});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
+        const int interval = configManager.getConfig().checkIntervalSeconds;
+
+        std::filesystem::remove(testPath);
+        return interval;
+    };
+
+    SECTION("Positive interval enables continuous mode") {
+        REQUIRE(loadWithInterval("60") == 60);
+    }
+
+    SECTION("Zero interval stays single-run") {
+        REQUIRE(loadWithInterval("0") == 0);
+    }
+
+    SECTION("Negative interval falls back to single-run") {
+        REQUIRE(loadWithInterval("-5") == 0);
+    }
+
+    SECTION("Absent key stays single-run") {
+        REQUIRE(loadWithInterval("") == 0);
     }
 }
 

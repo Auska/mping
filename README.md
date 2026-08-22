@@ -21,6 +21,7 @@ The project follows a command-pattern architecture with modular design:
 - Query statistics for specific IP addresses
 - Alert tracking with automatic recovery recording
 - Config file support (INI format, default: `~/.config/mping/config.json`)
+- Continuous check mode with configurable interval (via `check_interval` in config file)
 - Two-round ping strategy (1 fast packet, retry with 5 packets to reduce false positives)
 - Pre-alert confirmation: first-time failures are retried 3 times before an alert is raised (avoids false alerts from transient failures)
 
@@ -49,6 +50,23 @@ The project follows a command-pattern architecture with modular design:
 
 - Default filename: `ip.txt`
 - Default behavior: Show all hosts with status (IP, hostname, status, delay)
+
+### Continuous check mode
+
+Set `check_interval` (seconds) under `[general]` in the config file to keep
+checking on a fixed interval. The tool reloads the host list and alert state every round,
+so host file edits take effect immediately:
+
+```ini
+[general]
+check_interval = 60
+```
+
+A value of `0` or an absent key keeps the original single-run behavior. Stop with
+Ctrl+C (results are persisted per round, nothing is lost).
+
+`mping -S` writes the current `check_interval` to the config file so the
+value can be adjusted there.
 
 ### Raw socket mode (requires root or cap_net_raw)
 

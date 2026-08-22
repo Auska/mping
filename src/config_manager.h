@@ -18,6 +18,7 @@ class ConfigManager {
         std::string queryIP      = "";
         int cleanupDays          = -1;  // -1表示不执行清理
         int queryAlerts = -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
+        int checkIntervalSeconds = 0;  // 持续检查模式：>0 = 每轮间隔秒数（0 = 单次运行）
         int queryRecoveryRecords =
             -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
         bool loadConfigFile        = true;  // 是否加载配置文件

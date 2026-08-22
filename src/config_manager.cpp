@@ -72,6 +72,16 @@ void ConfigManager::applyConfigFileSettings() {
     if (configFile.has("general", "cleanup_days")) {
         config.cleanupDays = configFile.getInt("general", "cleanup_days", config.cleanupDays);
     }
+    // 持续检查模式：>0 = 每轮间隔秒数；0/缺失 = 单次运行；负数视为配置错误
+    if (configFile.has("general", "check_interval")) {
+        config.checkIntervalSeconds =
+            configFile.getInt("general", "check_interval", config.checkIntervalSeconds);
+        if (config.checkIntervalSeconds < 0) {
+            std::println(std::cerr,
+                         "Warning: check_interval must be a non-negative integer, ignored.");
+            config.checkIntervalSeconds = 0;
+        }
+    }
 }
 
 bool ConfigManager::saveConfigFile() {
@@ -94,6 +104,7 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
     configFile.set("general", "database_path", config.databasePath);
     configFile.setBool("general", "silent", config.silentMode);
     configFile.setInt("general", "cleanup_days", config.cleanupDays);
+    configFile.setInt("general", "check_interval", config.checkIntervalSeconds);
 
     return configFile.save(savePath);
 }
@@ -225,6 +236,10 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "");
     std::println(std::cout, "Configuration File:");
     std::println(std::cout, "  Default path: $HOME/.config/mping/config.json");
+    std::println(std::cout, "  [general] keys: database_path, silent, cleanup_days,");
+    std::println(std::cout,
+                 "  check_interval (continuous mode: seconds between rounds, 0/absent = single "
+                 "run)");
     std::println(std::cout, "");
     std::println(std::cout,
                  "Default behavior: If no file specified and database enabled, read hosts from "
