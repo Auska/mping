@@ -1,6 +1,7 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -82,6 +83,14 @@ class PingCommand : public Command {
     int execute() override;
 
    private:
+    // 加载主机列表：-f 文件 > 数据库 hosts 表 > 默认 ip.txt
+    bool loadHosts(std::unique_ptr<DatabaseManagerPG>& db,
+                   std::map<std::string, std::string>& hosts);
+    // 落库、告警处理与自动清理（仅数据库模式调用）
+    bool persistResults(PingManager& pingManager, std::vector<PingResult>& allResults,
+                        std::unique_ptr<DatabaseManagerPG>& db);
+    // 打印结果（静默模式跳过）
+    void printResults(const std::vector<PingResult>& allResults);
     bool insertPingResults(DatabaseManagerPG* db, const std::vector<PingResult>& allResults);
     bool processAlerts(DatabaseManagerPG* db, const std::vector<PingResult>& allResults,
                        const std::unordered_set<std::string>& alertIPs);

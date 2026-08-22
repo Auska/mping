@@ -226,21 +226,15 @@ bool PingCommand::processAlerts(DatabaseManagerPG* db, const std::vector<PingRes
     return success;
 }
 
-int PingCommand::execute() {
-    // 读取主机列表
-    // 如果指定了文件名（通过 -f 参数或命令行参数），则从文件读取主机列表
-    // 否则如果启用了数据库，则从数据库的 hosts 表读取主机列表
-    // 如果两者都没有指定，则默认从 ip.txt 文件读取
-    // db 在启用数据库时创建一次，供取主机与存结果复用
-    std::unique_ptr<DatabaseManagerPG> db;
-    std::map<std::string, std::string> hosts;
-
+bool PingCommand::loadHosts(std::unique_ptr<DatabaseManagerPG>& db,
+                            std::map<std::string, std::string>& hosts) {
+    // 主机来源优先级：-f 文件 > 数据库 hosts 表 > 默认 ip.txt
     if (!config.filename.empty()) {
         hosts = readHostsFromFile(config.filename);
     } else if (config.enableDatabase) {
         db = createDatabase();
         if (!initializeDatabase(*db)) {
-            return 1;
+            return false;
         }
         hosts = db->getAllHosts();
     } else {
@@ -249,53 +243,76 @@ int PingCommand::execute() {
 
     if (hosts.empty()) {
         std::println(std::cerr, "No hosts to ping. Please check the input file or database.");
+        return false;
+    }
+    return true;
+}
+
+// 落库、告警处理与自动清理；失败返回 false（调用方统一返回退出码 1）
+bool PingCommand::persistResults(PingManager& pingManager, std::vector<PingResult>& allResults,
+                                 std::unique_ptr<DatabaseManagerPG>& db) {
+    if (!db) {
+        db = createDatabase();
+        if (!initializeDatabase(*db)) {
+            return false;
+        }
+    }
+
+    // 预查当前在告警表中的 IP（一次查询，确认重试与告警处理共用）
+    std::unordered_set<std::string> alertIPs;
+    for (const auto& alert : db->getActiveAlerts()) {
+        alertIPs.insert(std::get<0>(alert));
+    }
+
+    // 首次不通且未告警的主机，先重试确认再决定是否告警（避免误报）
+    if (!confirmFailuresWithRetry(pingManager, allResults, db.get(), alertIPs)) {
+        return false;
+    }
+
+    if (!insertPingResults(db.get(), allResults)) {
+        std::println(std::cerr, "Failed to insert ping results into database");
+        return false;
+    }
+
+    // 处理告警逻辑
+    if (!processAlerts(db.get(), allResults, alertIPs)) {
+        return false;
+    }
+
+    // 每次检查后自动清理 ping_results 表中超过指定天数的旧记录
+    db->cleanupOldPingResults(ConfigDefaults::DEFAULT_PING_RESULTS_CLEANUP_DAYS);
+    return true;
+}
+
+void PingCommand::printResults(const std::vector<PingResult>& allResults) {
+    for (const auto& r : allResults) {
+        std::println(std::cout, "{}\t{}\t{}\t{}ms", r.ip, r.hostname,
+                     (r.success ? "success" : "failed"), r.delayMs);
+    }
+}
+
+int PingCommand::execute() {
+    // 1. 加载主机列表（文件 / 数据库 hosts 表 / 默认文件）
+    std::unique_ptr<DatabaseManagerPG> db;
+    std::map<std::string, std::string> hosts;
+    if (!loadHosts(db, hosts)) {
         return 1;
     }
 
-    // 创建 Ping 管理器并执行 Ping 操作
+    // 2. 并发 ping（线程池，内部两轮：快速探测 + 失败主机重试）
     PingManager pingManager;
     auto allResults = pingManager.performPing(hosts);
 
-    // 如果启用了数据库，则存储结果并处理告警
+    // 3. 落库、告警处理与自动清理（仅数据库模式）
     if (config.enableDatabase) {
-        if (!db) {
-            db = createDatabase();
-            if (!initializeDatabase(*db)) {
-                return 1;
-            }
-        }
-
-        // 预查当前在告警表中的 IP（一次查询，确认重试与告警处理共用）
-        std::unordered_set<std::string> alertIPs;
-        for (const auto& alert : db->getActiveAlerts()) {
-            alertIPs.insert(std::get<0>(alert));
-        }
-
-        // 首次不通且未告警的主机，先重试确认再决定是否告警（避免误报）
-        if (!confirmFailuresWithRetry(pingManager, allResults, db.get(), alertIPs)) {
+        if (!persistResults(pingManager, allResults, db)) {
             return 1;
         }
-
-        if (!insertPingResults(db.get(), allResults)) {
-            std::println(std::cerr, "Failed to insert ping results into database");
-            return 1;
-        }
-
-        // 处理告警逻辑
-        if (!processAlerts(db.get(), allResults, alertIPs)) {
-            return 1;
-        }
-
-        // 每次检查后自动清理 ping_results 表中超过指定天数的旧记录
-        db->cleanupOldPingResults(ConfigDefaults::DEFAULT_PING_RESULTS_CLEANUP_DAYS);
     }
 
-    // 打印所有 IP 地址和结果（除非启用静默模式）
+    // 4. 输出结果（静默模式跳过）
     if (!config.silentMode) {
-        for (const auto& r : allResults) {
-            std::println(std::cout, "{}\t{}\t{}\t{}ms", r.ip, r.hostname,
-                         (r.success ? "success" : "failed"), r.delayMs);
-        }
+        printResults(allResults);
     }
 
     return 0;

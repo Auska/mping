@@ -3,6 +3,7 @@
 
 #include <libpq-fe.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -54,8 +55,19 @@ class DatabaseManagerPG {
     bool insertPingResultsBatch(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
+    // 在单事务内逐行执行参数化插入；serialize 把一行映射为参数文本列
+    bool insertBatch(
+        const char* sql,
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
+        const std::function<
+            void(const std::tuple<std::string, std::string, short, bool, std::string>&,
+                 std::vector<std::string>&)>& serialize);
+
     // 将旧 TIMESTAMP 列迁移为 TIMESTAMPTZ
     bool migrateSchema();
+
+    // 查询执行器：days >= 0 时用 $1 参数化过滤，否则执行全部记录查询
+    PGresult* executeOptionalDays(const char* sqlDays, const char* sqlAll, int days);
 
     // 删除 ping_results 表中超过 days 天的旧记录；返回删除行数，失败返回 -1
     int deleteOldPingResults(int days);

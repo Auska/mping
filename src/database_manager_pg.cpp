@@ -301,9 +301,13 @@ bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::strin
 }
 
 // 辅助函数：批量插入主机信息
-bool DatabaseManagerPG::insertHostsBatch(
-    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    if (results.empty()) {
+// 在单事务内逐行执行参数化插入，防止 SQL 注入；任一失败回滚并返回 false
+bool DatabaseManagerPG::insertBatch(
+    const char* sql,
+    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
+    const std::function<void(const std::tuple<std::string, std::string, short, bool, std::string>&,
+                             std::vector<std::string>&)>& serialize) {
+    if (rows.empty()) {
         return true;
     }
 
@@ -311,51 +315,30 @@ bool DatabaseManagerPG::insertHostsBatch(
 
     // 开始事务以提高性能
     if (!executeQuery("BEGIN;")) {
-        std::println(std::cerr, "Failed to begin transaction for hosts");
+        std::println(std::cerr, "Failed to begin transaction for batch insert");
         return false;
     }
 
-    // 使用参数化查询逐个插入，防止SQL注入
-    const char* paramValues[4];
-    int paramLengths[4];
-    int paramFormats[4];
+    for (const auto& row : rows) {
+        // 把一行序列化为参数文本（存活至 PQexecParams 返回）
+        std::vector<std::string> params;
+        serialize(row, params);
 
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        // 设置参数值
-        paramValues[0]        = ip.c_str();
-        paramValues[1]        = hostname.c_str();
-        std::string delayStr  = std::to_string(delay);
-        paramValues[2]        = delayStr.c_str();
-        std::string statusStr = successFlag ? "true" : "false";
-        paramValues[3]        = statusStr.c_str();
+        std::vector<const char*> values;
+        std::vector<int> lengths;
+        values.reserve(params.size());
+        lengths.reserve(params.size());
+        for (const auto& p : params) {
+            values.push_back(p.c_str());
+            lengths.push_back(static_cast<int>(p.length()));
+        }
+        // 参数格式：0 表示文本格式
+        std::vector<int> formats(params.size(), 0);
 
-        // 设置参数长度
-        paramLengths[0] = static_cast<int>(ip.length());
-        paramLengths[1] = static_cast<int>(hostname.length());
-        paramLengths[2] = static_cast<int>(delayStr.length());
-        paramLengths[3] = static_cast<int>(statusStr.length());
-
-        // 设置参数格式（0表示文本格式）
-        paramFormats[0] = 0;
-        paramFormats[1] = 0;
-        paramFormats[2] = 0;
-        paramFormats[3] = 0;
-
-        // 使用参数化查询
-        const char* insertSQL =
-            "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) "
-            "VALUES ($1, $2, NOW(), $4::boolean, $3::integer) "
-            "ON CONFLICT (ip) DO UPDATE SET "
-            "hostname = EXCLUDED.hostname, "
-            "last_seen = EXCLUDED.last_seen, "
-            "last_status = EXCLUDED.last_status, "
-            "last_delay = EXCLUDED.last_delay;";
-
-        PGresult* res = PQexecParams(conn.get(), insertSQL, 4, nullptr, paramValues, paramLengths,
-                                     paramFormats, 0);
-
+        PGresult* res = PQexecParams(conn.get(), sql, static_cast<int>(params.size()), nullptr,
+                                     values.data(), lengths.data(), formats.data(), 0);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::println(std::cerr, "Failed to insert host record for IP {}: {}", ip,
+            std::println(std::cerr, "Failed to insert record for IP {}: {}", std::get<0>(row),
                          PQresultErrorMessage(res));
             PQclear(res);
             executeQuery("ROLLBACK;");
@@ -366,82 +349,40 @@ bool DatabaseManagerPG::insertHostsBatch(
 
     // 提交事务
     if (!executeQuery("COMMIT;")) {
-        std::println(std::cerr, "Failed to commit transaction for hosts");
+        std::println(std::cerr, "Failed to commit batch insert");
         return false;
     }
 
     return true;
 }
 
-// 辅助函数：批量插入ping结果
+// 批量插入或更新主机信息（UPSERT）
+bool DatabaseManagerPG::insertHostsBatch(
+    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
+    const char* insertSQL =
+        "INSERT INTO hosts (ip, hostname, last_seen, last_status, last_delay) "
+        "VALUES ($1, $2, NOW(), $4::boolean, $3::integer) "
+        "ON CONFLICT (ip) DO UPDATE SET "
+        "hostname = EXCLUDED.hostname, "
+        "last_seen = EXCLUDED.last_seen, "
+        "last_status = EXCLUDED.last_status, "
+        "last_delay = EXCLUDED.last_delay;";
+    return insertBatch(insertSQL, results, [](const auto& row, std::vector<std::string>& params) {
+        params = {std::get<0>(row), std::get<1>(row), std::to_string(std::get<2>(row)),
+                  std::get<3>(row) ? "true" : "false"};
+    });
+}
+
+// 批量插入ping结果
 bool DatabaseManagerPG::insertPingResultsBatch(
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results) {
-    if (results.empty()) {
-        return true;
-    }
-
-    std::lock_guard<std::mutex> lock(dbMutex);
-
-    // 开始事务以提高性能
-    if (!executeQuery("BEGIN;")) {
-        std::println(std::cerr, "Failed to begin transaction for ping results");
-        return false;
-    }
-
-    // 使用参数化查询逐个插入，防止SQL注入
-    const char* paramValues[5];
-    int paramLengths[5];
-    int paramFormats[5];
-
-    for (const auto& [ip, hostname, delay, successFlag, timestamp] : results) {
-        // 设置参数值
-        paramValues[0]        = ip.c_str();
-        paramValues[1]        = hostname.c_str();
-        std::string delayStr  = std::to_string(delay);
-        paramValues[2]        = delayStr.c_str();
-        std::string statusStr = successFlag ? "true" : "false";
-        paramValues[3]        = statusStr.c_str();
-        paramValues[4]        = timestamp.c_str();
-
-        // 设置参数长度
-        paramLengths[0] = static_cast<int>(ip.length());
-        paramLengths[1] = static_cast<int>(hostname.length());
-        paramLengths[2] = static_cast<int>(delayStr.length());
-        paramLengths[3] = static_cast<int>(statusStr.length());
-        paramLengths[4] = static_cast<int>(timestamp.length());
-
-        // 设置参数格式（0表示文本格式）
-        paramFormats[0] = 0;
-        paramFormats[1] = 0;
-        paramFormats[2] = 0;
-        paramFormats[3] = 0;
-        paramFormats[4] = 0;
-
-        // 使用参数化查询
-        const char* insertSQL =
-            "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) "
-            "VALUES ($1, $2, $3::integer, $4::boolean, $5)";
-
-        PGresult* res = PQexecParams(conn.get(), insertSQL, 5, nullptr, paramValues, paramLengths,
-                                     paramFormats, 0);
-
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::println(std::cerr, "Failed to insert ping result for IP {}: {}", ip,
-                         PQresultErrorMessage(res));
-            PQclear(res);
-            executeQuery("ROLLBACK;");
-            return false;
-        }
-        PQclear(res);
-    }
-
-    // 提交事务
-    if (!executeQuery("COMMIT;")) {
-        std::println(std::cerr, "Failed to commit transaction for ping results");
-        return false;
-    }
-
-    return true;
+    const char* insertSQL =
+        "INSERT INTO ping_results (ip, hostname, delay, success, timestamp) "
+        "VALUES ($1, $2, $3::integer, $4::boolean, $5)";
+    return insertBatch(insertSQL, results, [](const auto& row, std::vector<std::string>& params) {
+        params = {std::get<0>(row), std::get<1>(row), std::to_string(std::get<2>(row)),
+                  std::get<3>(row) ? "true" : "false", std::get<4>(row)};
+    });
 }
 
 bool DatabaseManagerPG::insertPingResults(
@@ -792,38 +733,38 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     return true;
 }
 
-std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts(
-    int days) {
-    std::lock_guard<std::mutex> lock(dbMutex);
-    std::vector<std::tuple<std::string, std::string, std::string>> alerts;
-
+// 查询执行器：days >= 0 时用 $1 参数化过滤，否则执行全部记录查询；连接未就绪返回 nullptr
+PGresult* DatabaseManagerPG::executeOptionalDays(const char* sqlDays, const char* sqlAll,
+                                                 int days) {
     if (!conn) {
         std::println(std::cerr, "Database not initialized");
-        return alerts;
+        return nullptr;
     }
 
-    PGresult* res = nullptr;
-
-    // 查询活动告警，按创建时间排序
     if (days >= 0) {
-        // 使用参数化查询指定天数内的告警
-        const char* selectSQL =
-            "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - ($1 * "
-            "INTERVAL '1 day') ORDER BY created_time DESC";
+        // 参数化查询：只取指定天数内的记录
         std::string daysStr        = std::to_string(days);
         const char* paramValues[1] = {daysStr.c_str()};
         int paramLengths[1]        = {static_cast<int>(daysStr.length())};
         int paramFormats[1]        = {0};
 
-        res = PQexecParams(conn.get(), selectSQL, 1, nullptr, paramValues, paramLengths,
-                           paramFormats, 0);
-    } else {
-        // 查询所有告警
-        const char* selectSQL =
-            "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC";
-        res = PQexec(conn.get(), selectSQL);
+        return PQexecParams(conn.get(), sqlDays, 1, nullptr, paramValues, paramLengths,
+                            paramFormats, 0);
     }
+    return PQexec(conn.get(), sqlAll);
+}
 
+std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG::getActiveAlerts(
+    int days) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+    std::vector<std::tuple<std::string, std::string, std::string>> alerts;
+
+    // 查询活动告警，按创建时间排序
+    const char* sqlDays =
+        "SELECT ip, hostname, created_time FROM alerts WHERE created_time >= NOW() - ($1 * "
+        "INTERVAL '1 day') ORDER BY created_time DESC";
+    const char* sqlAll = "SELECT ip, hostname, created_time FROM alerts ORDER BY created_time DESC";
+    PGresult* res      = executeOptionalDays(sqlDays, sqlAll, days);
     if (!res
         || (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK)) {
         std::println(std::cerr, "Failed to query alerts");
@@ -833,7 +774,6 @@ std::vector<std::tuple<std::string, std::string, std::string>> DatabaseManagerPG
 
     // 预分配空间以提高性能
     alerts.reserve(PQntuples(res));
-
     for (int row = 0; row < PQntuples(res); row++) {
         char* ip           = PQgetvalue(res, row, 0);
         char* hostname     = PQgetvalue(res, row, 1);
@@ -856,34 +796,14 @@ DatabaseManagerPG::getRecoveryRecords(int days) {
     std::lock_guard<std::mutex> lock(dbMutex);
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>> records;
 
-    if (!conn) {
-        std::println(std::cerr, "Database not initialized");
-        return records;
-    }
-
-    PGresult* res = nullptr;
-
     // 查询恢复记录，按恢复时间排序
-    if (days >= 0) {
-        // 使用参数化查询指定天数内的恢复记录
-        const char* selectSQL =
-            "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE "
-            "recovery_time >= NOW() - ($1 * INTERVAL '1 day') ORDER BY recovery_time DESC";
-        std::string daysStr        = std::to_string(days);
-        const char* paramValues[1] = {daysStr.c_str()};
-        int paramLengths[1]        = {static_cast<int>(daysStr.length())};
-        int paramFormats[1]        = {0};
-
-        res = PQexecParams(conn.get(), selectSQL, 1, nullptr, paramValues, paramLengths,
-                           paramFormats, 0);
-    } else {
-        // 查询所有恢复记录
-        const char* selectSQL =
-            "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY "
-            "recovery_time DESC";
-        res = PQexec(conn.get(), selectSQL);
-    }
-
+    const char* sqlDays =
+        "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records WHERE "
+        "recovery_time >= NOW() - ($1 * INTERVAL '1 day') ORDER BY recovery_time DESC";
+    const char* sqlAll =
+        "SELECT id, ip, hostname, alert_time, recovery_time FROM recovery_records ORDER BY "
+        "recovery_time DESC";
+    PGresult* res = executeOptionalDays(sqlDays, sqlAll, days);
     if (!res
         || (PQresultStatus(res) != PGRES_TUPLES_OK && PQresultStatus(res) != PGRES_COMMAND_OK)) {
         std::println(std::cerr, "Failed to query recovery records");
@@ -893,7 +813,6 @@ DatabaseManagerPG::getRecoveryRecords(int days) {
 
     // 预分配空间以提高性能
     records.reserve(PQntuples(res));
-
     for (int row = 0; row < PQntuples(res); row++) {
         int id              = std::atoi(PQgetvalue(res, row, 0));
         char* ip            = PQgetvalue(res, row, 1);
