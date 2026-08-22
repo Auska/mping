@@ -233,6 +233,8 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 - `-N`, `--no-config`: 不加载配置文件
 - `-S`, `--save-config [path]`: 保存当前配置到文件（默认：XDG 配置目录）
 
+> **可选参数形式**：`-a`/`-r`/`-C` 的天数与 `-S` 的路径既支持附加形式（`-C60`、`--cleanup=60`），也支持空格分隔形式（`-C 60`、`--cleanup 60`）；非数字位置参数仍按文件名处理
+
 > **注意**：`-d` 参数必须是 PostgreSQL 连接字符串（libpq 格式），如 `host=localhost user=myuser dbname=mydb`。
 
 ## 文件格式
@@ -326,7 +328,7 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **44 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **342 个断言**。
+当前共 **44 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **360 个断言**。
 
 ### 运行测试
 

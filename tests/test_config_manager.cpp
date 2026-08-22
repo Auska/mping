@@ -169,6 +169,26 @@ TEST_CASE("ConfigManager alerts option", "[config]") {
         REQUIRE(config.queryAlerts == 7);
     }
 
+    SECTION("-a option with space-separated days") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-a", "7"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
+        const auto& config = configManager.getConfig();
+        REQUIRE(config.queryAlerts == 7);
+        REQUIRE(config.filename == "");
+    }
+
+    SECTION("-a with days and positional file") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-a", "7", "extra.txt"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
+        const auto& config = configManager.getConfig();
+        REQUIRE(config.queryAlerts == 7);
+        REQUIRE(config.filename == "extra.txt");
+    }
+
     SECTION("--alerts option with days") {
         reset_getopt();
         ConfigManager configManager;
@@ -210,6 +230,16 @@ TEST_CASE("ConfigManager recovery option", "[config]") {
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.queryRecoveryRecords == 14);
+    }
+
+    SECTION("-r option with space-separated days") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-r", "14"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
+        const auto& config = configManager.getConfig();
+        REQUIRE(config.queryRecoveryRecords == 14);
+        REQUIRE(config.filename == "");
     }
 
     SECTION("--recovery option with days") {
@@ -277,14 +307,37 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         REQUIRE(config.cleanupDays == 90);
     }
 
-    SECTION("--cleanup option with days") {
+    SECTION("-C option with space-separated days") {
         reset_getopt();
         ConfigManager configManager;
-        auto argv = Argv({"mping", "--cleanup=15"});
+        auto argv = Argv({"mping", "-C", "90"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
+        const auto& config = configManager.getConfig();
+        REQUIRE(config.enableDatabase == true);
+        REQUIRE(config.cleanupDays == 90);
+        REQUIRE(config.filename == "");
+    }
+
+    SECTION("--cleanup option with space-separated days") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "--cleanup", "15"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
         REQUIRE(config.cleanupDays == 15);
+        REQUIRE(config.filename == "");
+    }
+
+    SECTION("-C with non-numeric positional keeps filename") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-C", "my_hosts.txt"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
+        const auto& config = configManager.getConfig();
+        REQUIRE(config.enableDatabase == true);
+        REQUIRE(config.cleanupDays == 30);  // 默认 30 天
+        REQUIRE(config.filename == "my_hosts.txt");
     }
 }
 

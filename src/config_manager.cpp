@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <cctype>
 #include <iostream>
 #include <print>
 #include <stdexcept>
@@ -9,6 +10,19 @@
 #include "version_info.h"
 
 namespace {
+
+// 判断字符串是否为非负整数（-C/-a/-r 空格分隔天数形式的识别）
+bool isNonNegativeInteger(const char* s) {
+    if (s == nullptr || *s == '\0') {
+        return false;
+    }
+    for (const char* p = s; *p != '\0'; p++) {
+        if (!std::isdigit(static_cast<unsigned char>(*p))) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // 解析可选的 -a/-r/-C 天数参数；optarg 为空时使用 defaultDays（哨兵值或默认值）
 bool parseOptionalDays(const char* optarg, const char* optionName, int& value, int defaultDays) {
@@ -124,6 +138,11 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
 
     // 解析命令行参数
     int opt;
+    // optional_argument 的空格分隔形式（如 "-C 30"）不会被 getopt 消费：
+    // 记录哪些选项处于"已启用但未带参"状态，稍后消费数字位置参数作为天数
+    bool cleanupBare  = false;
+    bool alertsBare   = false;
+    bool recoveryBare = false;
     while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::vc:NS::", long_options, nullptr))
            != -1) {
         switch (opt) {
@@ -144,12 +163,14 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.queryIP = optarg;
                 break;
             case 'a':
+                alertsBare = (optarg == nullptr);
                 if (!parseOptionalDays(optarg, "Alert", config.queryAlerts,
                                        ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS)) {
                     return false;
                 }
                 break;
             case 'r':
+                recoveryBare = (optarg == nullptr);
                 if (!parseOptionalDays(optarg, "Recovery record", config.queryRecoveryRecords,
                                        ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS)) {
                     return false;
@@ -160,6 +181,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 break;
             case 'C':
                 config.enableDatabase = true;  // 清理功能需要启用数据库
+                cleanupBare           = (optarg == nullptr);
                 if (!parseOptionalDays(optarg, "Cleanup", config.cleanupDays,
                                        ConfigDefaults::DEFAULT_CLEANUP_DAYS)) {
                     return false;
@@ -175,14 +197,19 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 config.loadConfigFile = false;
                 break;
             case 'S':
-                // 保存配置文件
+                // 保存配置文件；optional_argument 不吃空格分隔路径，这里手动消费
                 if (optarg != nullptr) {
                     if (!saveConfigFile(optarg)) {
                         std::println(std::cerr, "Failed to save config file to: {}", optarg);
                         return false;
                     }
                 } else {
-                    if (!saveConfigFile()) {
+                    const char* savePath = "";
+                    if (optind < argc && argv[optind][0] != '-') {
+                        savePath = argv[optind];
+                        optind++;  // 消费空格分隔的保存路径
+                    }
+                    if (!saveConfigFile(savePath)) {
                         std::println(std::cerr, "Failed to save config file");
                         return false;
                     }
@@ -190,6 +217,28 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 std::println(std::cout, "Configuration saved successfully");
                 return false;
         }
+    }
+
+    // 空格分隔的天数形式（文档 "-C [n]"）：`-C 30` 中 "30" 按 getopt 规则成为位置参数，
+    // 若它是非负整数且对应选项未带参，则将其消费为天数；否则保持文件名语义
+    bool consumedAsDays = false;
+    if (optind < argc && isNonNegativeInteger(argv[optind])) {
+        try {
+            const int days = std::stoi(argv[optind]);
+            if (cleanupBare) {
+                config.cleanupDays = days;
+            } else if (alertsBare) {
+                config.queryAlerts = days;
+            } else if (recoveryBare) {
+                config.queryRecoveryRecords = days;
+            }
+            consumedAsDays = cleanupBare || alertsBare || recoveryBare;
+        } catch (const std::exception&) {
+            // 数字超出 int 范围等：按文件名处理
+        }
+    }
+    if (consumedAsDays) {
+        optind++;
     }
 
     // 如果还有剩余的参数，将其视为文件名
