@@ -95,10 +95,6 @@ class DatabaseManagerPG {
     // 初始化数据库
     bool initialize();
 
-    // 插入单个ping结果
-    bool insertPingResult(const std::string& ip, const std::string& hostname, short delay,
-                          bool success, const std::string& timestamp);
-
     // 批量插入ping结果
     bool insertPingResults(
         const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);

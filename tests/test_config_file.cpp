@@ -37,7 +37,6 @@ TEST_CASE("ConfigFile basic operations", "[config_file]") {
 
         ConfigFile config;
         REQUIRE(config.load(testPath) == true);
-        REQUIRE(config.isLoaded() == true);
         REQUIRE(config.getBool("general", "database") == true);
         REQUIRE(config.getInt("general", "ping_count") == 5);
         REQUIRE(config.getBool("general", "silent") == false);
@@ -62,51 +61,12 @@ TEST_CASE("ConfigFile basic operations", "[config_file]") {
         REQUIRE(config.getInt("section1", "key2") == 123);
         REQUIRE(config.getBool("section1", "key3") == true);
     }
-
-    SECTION("Remove config entry") {
-        ConfigFile config;
-        config.set("section1", "key1", "value1");
-        REQUIRE(config.has("section1", "key1") == true);
-
-        REQUIRE(config.remove("section1", "key1") == true);
-        REQUIRE(config.has("section1", "key1") == false);
-    }
-
-    SECTION("Remove section") {
-        ConfigFile config;
-        config.set("section1", "key1", "value1");
-        config.set("section1", "key2", "value2");
-
-        REQUIRE(config.removeSection("section1") == true);
-        REQUIRE(config.has("section1", "key1") == false);
-        REQUIRE(config.has("section1", "key2") == false);
-    }
-
-    SECTION("Clear config") {
-        ConfigFile config;
-        config.set("section1", "key1", "value1");
-        REQUIRE(config.has("section1", "key1") == true);
-
-        config.clear();
-        REQUIRE(config.has("section1", "key1") == false);
-        REQUIRE(config.isLoaded() == false);
-    }
 }
 
 TEST_CASE("ConfigFile XDG paths", "[config_file][xdg]") {
     SECTION("Get XDG config home") {
         std::string configHome = ConfigFile::getXDGConfigHome();
         REQUIRE(configHome.empty() == false);
-    }
-
-    SECTION("Get XDG data home") {
-        std::string dataHome = ConfigFile::getXDGDataHome();
-        REQUIRE(dataHome.empty() == false);
-    }
-
-    SECTION("Get XDG config dirs") {
-        auto configDirs = ConfigFile::getXDGConfigDirs();
-        REQUIRE(configDirs.empty() == false);
     }
 
     SECTION("Get default config paths") {
@@ -200,8 +160,9 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
         REQUIRE(config.getBool("database", "enabled") == true);
         REQUIRE(config.getInt("alerts", "days") == 7);
 
-        auto sections = config.getSections();
-        REQUIRE(sections.size() == 3);
+        REQUIRE(config.has("general", "ping_count"));
+        REQUIRE(config.has("database", "enabled"));
+        REQUIRE(config.has("alerts", "days"));
 
         std::filesystem::remove(testPath);
     }
@@ -286,7 +247,7 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
 
         ConfigFile config;
         REQUIRE(config.load(testPath) == true);
-        REQUIRE(config.getSections().empty());
+        REQUIRE(config.has("general", "anything") == false);
 
         std::filesystem::remove(testPath);
     }
@@ -294,7 +255,6 @@ TEST_CASE("ConfigFile parsing", "[config_file]") {
     SECTION("File not found") {
         ConfigFile config;
         REQUIRE(config.load("/tmp/nonexistent_file.conf") == false);
-        REQUIRE(config.isLoaded() == false);
     }
 }
 
@@ -387,12 +347,9 @@ TEST_CASE("ConfigFile save/load roundtrip preserves all values", "[config_file][
 
         ConfigFile loaded;
         REQUIRE(loaded.load(testPath));
-        auto sections = loaded.getSections();
-        REQUIRE(sections.size() == 2);
-        auto keysA = loaded.getKeys("a");
-        REQUIRE(keysA.size() == 2);
-        auto keysB = loaded.getKeys("b");
-        REQUIRE(keysB.size() == 1);
+        REQUIRE(loaded.has("a", "k1"));
+        REQUIRE(loaded.has("a", "k2"));
+        REQUIRE(loaded.has("b", "k3"));
     }
 
     std::filesystem::remove(testPath);

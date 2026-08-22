@@ -295,6 +295,8 @@ mping -S
 mping -S /path/to/config.conf
 ```
 
+> 保存为原子写入（tmp + rename）；按节重写全部条目，文件中已有但未设置的键（未知键）随加载保留，注释与原始顺序不保留。
+
 ## 数据库架构
 
 - **`hosts` 表**：存储 IP 地址和主机名及创建和最后访问时间戳
@@ -328,7 +330,7 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **44 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **360 个断言**。
+当前共 **44 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **349 个断言**。
 
 ### 运行测试
 

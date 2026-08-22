@@ -13,7 +13,7 @@ class ConfigManager {
     struct Config {
         std::string filename     = "";
         bool enableDatabase      = false;
-        std::string databasePath = "host=localhost user=postgres dbname=mping";
+        std::string databasePath = "host=localhost user=postgres dbname=mping_pgtest";
         bool silentMode          = false;
         std::string queryIP      = "";
         int cleanupDays          = -1;  // -1表示不执行清理

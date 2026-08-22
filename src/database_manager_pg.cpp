@@ -468,26 +468,6 @@ bool DatabaseManagerPG::migrateSchema() {
     return true;
 }
 
-bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::string& hostname,
-                                         short delay, bool success, const std::string& timestamp) {
-    // 验证IP地址格式
-    if (!IPValidator::isValidIPv4(ip)) {
-        std::println(std::cerr, "Invalid IP address format: {}", ip);
-        return false;
-    }
-
-    // 检查数据库连接
-    if (!conn || PQstatus(conn.get()) != CONNECTION_OK) {
-        std::println(std::cerr, "Database not properly initialized or connection lost");
-        return false;
-    }
-
-    // 创建一个包含单个结果的向量并调用批量插入函数
-    std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results;
-    results.emplace_back(ip, hostname, delay, success, timestamp);
-    return insertPingResults(results);
-}
-
 // 辅助函数：批量插入主机信息
 // 在单事务内逐行执行参数化插入，防止 SQL 注入；任一失败回滚并返回 false
 bool DatabaseManagerPG::insertBatch(

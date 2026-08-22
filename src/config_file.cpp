@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <set>
 #include <sstream>
 
 std::string ConfigFile::trim(const std::string& str) const {
@@ -44,8 +43,6 @@ bool ConfigFile::parseLine(const std::string& line, std::string& currentSection)
 
         if (!currentSection.empty() && !key.empty()) {
             configData[currentSection][key] = value;
-            originalEntries.push_back({currentSection, key, value});
-            knownEntries.insert({currentSection, key});
         }
     }
 
@@ -60,27 +57,20 @@ bool ConfigFile::load(const std::string& path) {
 
     filePath = path;
     configData.clear();
-    originalEntries.clear();
-    loaded = false;
 
     std::string line;
     std::string currentSection;
 
     while (std::getline(file, line)) {
         if (!parseLine(line, currentSection)) {
-            file.close();
             return false;
         }
     }
-
-    file.close();
-    loaded = true;
     return true;
 }
 
 bool ConfigFile::loadFromXDGPaths() {
-    auto paths = getDefaultConfigPaths();
-    for (const auto& path : paths) {
+    for (const auto& path : getDefaultConfigPaths()) {
         if (load(path)) {
             return true;
         }
@@ -113,46 +103,13 @@ bool ConfigFile::save(const std::string& path) {
     file << "# Generated automatically" << std::endl;
     file << std::endl;
 
-    // 构建 O(log n) 查找表
-    std::set<std::pair<std::string, std::string>> seenKeys;
-    for (const auto& entry : originalEntries) {
-        seenKeys.insert({entry.section, entry.key});
-    }
-
-    // 保存原始条目（保留注释和顺序）
-    std::string lastSection;
-    for (const auto& entry : originalEntries) {
-        if (entry.section != lastSection) {
-            if (!lastSection.empty()) {
-                file << std::endl;
-            }
-            file << "[" << entry.section << "]" << std::endl;
-            lastSection = entry.section;
-        }
-        file << entry.key << " = \"" << entry.value << "\"" << std::endl;
-    }
-
-    // 保存新添加的条目
+    // 按节写出全部条目（map 有序；未知键随 load 保留，注释与顺序不保留）
     for (const auto& [section, keyMap] : configData) {
-        bool sectionWritten = false;
+        file << "[" << section << "]" << std::endl;
         for (const auto& [key, value] : keyMap) {
-            // O(log n) 查找 vs 原来的 O(n)
-            if (seenKeys.count({section, key})) {
-                continue;
-            }
-
-            if (!sectionWritten) {
-                if (section != lastSection) {
-                    if (!lastSection.empty()) {
-                        file << std::endl;
-                    }
-                    file << "[" << section << "]" << std::endl;
-                    lastSection = section;
-                }
-                sectionWritten = true;
-            }
             file << key << " = \"" << value << "\"" << std::endl;
         }
+        file << std::endl;
     }
 
     file.close();
@@ -223,7 +180,8 @@ std::optional<bool> ConfigFile::getBool(const std::string& section, const std::s
     }
 
     std::string lowerValue = *value;
-    std::transform(lowerValue.begin(), lowerValue.end(), lowerValue.begin(), ::tolower);
+    std::transform(lowerValue.begin(), lowerValue.end(), lowerValue.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     if (lowerValue == "true" || lowerValue == "yes" || lowerValue == "1" || lowerValue == "on") {
         return true;
@@ -243,19 +201,6 @@ bool ConfigFile::getBool(const std::string& section, const std::string& key,
 
 void ConfigFile::set(const std::string& section, const std::string& key, const std::string& value) {
     configData[section][key] = value;
-    auto entryKey            = std::make_pair(section, key);
-    if (knownEntries.find(entryKey) == knownEntries.end()) {
-        knownEntries.insert(entryKey);
-        originalEntries.push_back({section, key, value});
-    } else {
-        // 同步已存在条目，save() 才能写回更新后的值
-        for (auto& entry : originalEntries) {
-            if (entry.section == section && entry.key == key) {
-                entry.value = value;
-                break;
-            }
-        }
-    }
 }
 
 void ConfigFile::setInt(const std::string& section, const std::string& key, int value) {
@@ -274,72 +219,6 @@ bool ConfigFile::has(const std::string& section, const std::string& key) const {
     return sectionIt->second.find(key) != sectionIt->second.end();
 }
 
-std::vector<std::string> ConfigFile::getSections() const {
-    std::vector<std::string> sections;
-    for (const auto& [section, _] : configData) {
-        sections.push_back(section);
-    }
-    return sections;
-}
-
-std::vector<std::string> ConfigFile::getKeys(const std::string& section) const {
-    std::vector<std::string> keys;
-    auto sectionIt = configData.find(section);
-    if (sectionIt != configData.end()) {
-        for (const auto& [key, _] : sectionIt->second) {
-            keys.push_back(key);
-        }
-    }
-    return keys;
-}
-
-bool ConfigFile::remove(const std::string& section, const std::string& key) {
-    auto sectionIt = configData.find(section);
-    if (sectionIt == configData.end()) {
-        return false;
-    }
-
-    if (sectionIt->second.erase(key) == 0) {
-        return false;
-    }
-
-    // 从 originalEntries 中移除
-    originalEntries.erase(std::remove_if(originalEntries.begin(), originalEntries.end(),
-                                         [&section, &key](const ConfigEntry& entry) {
-                                             return entry.section == section && entry.key == key;
-                                         }),
-                          originalEntries.end());
-
-    return true;
-}
-
-bool ConfigFile::removeSection(const std::string& section) {
-    if (configData.erase(section) == 0) {
-        return false;
-    }
-
-    // 从 originalEntries 中移除
-    originalEntries.erase(std::remove_if(originalEntries.begin(), originalEntries.end(),
-                                         [&section](const ConfigEntry& entry) {
-                                             return entry.section == section;
-                                         }),
-                          originalEntries.end());
-
-    return true;
-}
-
-void ConfigFile::clear() {
-    configData.clear();
-    originalEntries.clear();
-    knownEntries.clear();
-    loaded = false;
-    filePath.clear();
-}
-
-bool ConfigFile::isLoaded() const noexcept {
-    return loaded;
-}
-
 const std::string& ConfigFile::getFilePath() const noexcept {
     return filePath;
 }
@@ -354,21 +233,6 @@ std::string ConfigFile::getXDGConfigHome() {
     const char* home = std::getenv("HOME");
     if (home && home[0] != '\0') {
         return std::string(home) + "/.config";
-    }
-
-    return "";
-}
-
-std::string ConfigFile::getXDGDataHome() {
-    const char* env = std::getenv("XDG_DATA_HOME");
-    if (env && env[0] != '\0') {
-        return env;
-    }
-
-    // 默认值：$HOME/.local/share
-    const char* home = std::getenv("HOME");
-    if (home && home[0] != '\0') {
-        return std::string(home) + "/.local/share";
     }
 
     return "";
@@ -406,8 +270,7 @@ std::vector<std::string> ConfigFile::getDefaultConfigPaths() {
     }
 
     // 2. $XDG_CONFIG_DIRS/mping/config
-    auto configDirs = getXDGConfigDirs();
-    for (const auto& dir : configDirs) {
+    for (const auto& dir : getXDGConfigDirs()) {
         paths.push_back(dir + "/mping/config");
     }
 

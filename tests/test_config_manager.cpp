@@ -47,7 +47,7 @@ TEST_CASE("ConfigManager default values", "[config]") {
 
         REQUIRE(config.filename == "");
         REQUIRE(config.enableDatabase == false);
-        REQUIRE(config.databasePath == "host=localhost user=postgres dbname=mping");
+        REQUIRE(config.databasePath == "host=localhost user=postgres dbname=mping_pgtest");
         REQUIRE(config.silentMode == false);
         REQUIRE(config.queryIP == "");
         REQUIRE(config.cleanupDays == -1);
