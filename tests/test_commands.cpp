@@ -210,9 +210,21 @@ TEST_CASE("PingCommand error handling", "[commands][ping]") {
     }
 
     SECTION("Returns 1 with empty config (default ip.txt not present)") {
+        // 仓库自带默认 ip.txt，测试须在空临时目录运行以隔离 CWD 依赖；
+        // RAII 恢复 CWD，断言失败也保证不影响后续测试
+        std::string tmpDir = "/tmp/mping_empty_XXXXXX";
+        REQUIRE(mkdtemp(tmpDir.data()) != nullptr);
+        struct CwdGuard {
+            std::filesystem::path old;
+            ~CwdGuard() { std::filesystem::current_path(old); }
+        } guard{std::filesystem::current_path()};
+        std::filesystem::current_path(tmpDir);
+
         ConfigManager::Config cfg;
         PingCommand cmd(cfg);
         REQUIRE(cmd.execute() == 1);
+
+        std::filesystem::remove_all(tmpDir);
     }
 }
 
