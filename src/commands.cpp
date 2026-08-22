@@ -259,24 +259,9 @@ int PingCommand::execute() {
             }
         }
 
-        // 3. 滑动窗口并发检查（取代原先"快速探测 + 失败重试 + 告警确认重试"的重叠流程）：
-        //    - 未告警主机：连续 DOWN_CONFIRM_WINDOW 轮失败才判定离线，对抗瞬时波动，避免误报告警
-        //    - 已告警主机（持续故障）：单轮快检，只记录当前状态
-        std::map<std::string, std::string> alertedHosts;
-        std::map<std::string, std::string> pendingHosts;
-        for (const auto& [ip, hostname] : hosts) {
-            if (alertIPs.count(ip)) {
-                alertedHosts[ip] = hostname;
-            } else {
-                pendingHosts[ip] = hostname;
-            }
-        }
-
+        // 3. 滑动窗口并发检查：所有主机统一连续 DOWN_CONFIRM_WINDOW 轮失败才判定离线，对抗瞬时波动
         std::vector<PingResult> allResults =
-            pingManager.checkHosts(pendingHosts, ConfigDefaults::DOWN_CONFIRM_WINDOW);
-        auto alertedResults = pingManager.checkHosts(alertedHosts, 1);
-        allResults.insert(allResults.end(), std::make_move_iterator(alertedResults.begin()),
-                          std::make_move_iterator(alertedResults.end()));
+            pingManager.checkHosts(hosts, ConfigDefaults::DOWN_CONFIRM_WINDOW);
 
         // 4. 落库、告警处理与自动清理（仅数据库模式）
         if (config.enableDatabase) {
