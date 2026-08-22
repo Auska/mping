@@ -47,8 +47,8 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
 
         const auto& result = results[0];
         REQUIRE(result.success == false);
-        // Failed pings return timeout value (1000ms for 1 second timeout), not -1
-        REQUIRE(result.delayMs > 0);
+        // Failed pings carry no delay (0), never the timeout value
+        REQUIRE(result.delayMs == 0);
     }
 
     SECTION("Invalid IP produces a failure result, never deadlocks") {

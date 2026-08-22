@@ -5,6 +5,7 @@
 #include <chrono>
 #include <format>
 #include <iostream>
+#include <limits>
 #include <print>
 #include <unordered_map>
 #include <vector>
@@ -23,7 +24,8 @@ std::string getCurrentTimestamp() {
 PingResult pingHost(const std::string& ip, const std::string& hostname, int pingCount,
                     int timeoutSeconds) {
     bool success   = false;
-    short minDelay = static_cast<short>(timeoutSeconds * 1000);
+    // 哨兵值；仅成功路径写入真实延迟，失败时返回 0（不再用超时值冒充延迟）
+    short minDelay = std::numeric_limits<short>::max();
 
     try {
         unsigned timeoutMs = static_cast<unsigned>(timeoutSeconds) * 1000;
@@ -46,7 +48,7 @@ PingResult pingHost(const std::string& ip, const std::string& hostname, int ping
     return {.ip        = ip,
             .hostname  = hostname,
             .success   = success,
-            .delayMs   = minDelay,
+            .delayMs   = success ? minDelay : static_cast<short>(0),
             .timestamp = getCurrentTimestamp()};
 }
 

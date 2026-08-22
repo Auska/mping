@@ -230,8 +230,11 @@ bool PingCommand::persistResults(std::vector<PingResult>& allResults,
 
 void PingCommand::printResults(const std::vector<PingResult>& allResults) {
     for (const auto& r : allResults) {
-        std::println(std::cout, "{}\t{}\t{}\t{}ms", r.ip, r.hostname,
-                     (r.success ? "success" : "failed"), r.delayMs);
+        if (r.success) {
+            std::println(std::cout, "{}\t{}\tsuccess\t{}ms", r.ip, r.hostname, r.delayMs);
+        } else {
+            std::println(std::cout, "{}\t{}\tfailed\t-", r.ip, r.hostname);
+        }
     }
 }
 
