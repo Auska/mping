@@ -1,5 +1,6 @@
 #include <catch2/catch_all.hpp>
 #include <chrono>
+#include <future>
 #include <thread>
 
 #include "commands.h"
@@ -44,6 +45,16 @@ TEST_CASE("PingManager basic functionality", "[ping]") {
         REQUIRE(result.success == false);
         // Failed pings return timeout value (1000ms for 1 second timeout), not -1
         REQUIRE(result.delayMs > 0);
+    }
+
+    SECTION("Invalid IP never deadlocks") {
+        // 空地址使 IPAddress 构造必然抛异常（getaddrinfo 对空串必然失败）
+        std::map<std::string, std::string> hosts = {{"", "bad-host"}};
+        auto future                              = std::async(std::launch::async,
+                                                              [&] { return pingManager.performPing(hosts, 1).size(); });
+        // pingHost 抛异常时若完成计数不递减，这里会永久挂起
+        REQUIRE(future.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+        REQUIRE(future.get() == 0);
     }
 
     SECTION("Ping with empty hosts list") {

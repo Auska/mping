@@ -110,16 +110,23 @@ std::vector<PingResult> PingManager::performPingInternal(
             std::unique_lock<std::mutex> lock(queueMutex);
             taskQueue.push([ip, hostname, pingCount, timeoutSeconds, &allResults, &resultsMutex,
                             &activeTasks, &completionMutex, &completionCV] {
+                // RAII：无论 pingHost 是否抛异常都递减完成计数，避免主线程永久等待
+                struct CompletionGuard {
+                    std::mutex& mutex;
+                    size_t& activeTasks;
+                    std::condition_variable& cv;
+                    ~CompletionGuard() {
+                        std::lock_guard<std::mutex> lock(mutex);
+                        if (--activeTasks == 0) {
+                            cv.notify_one();
+                        }
+                    }
+                } guard{completionMutex, activeTasks, completionCV};
+
                 auto result = pingHost(ip, hostname, pingCount, timeoutSeconds);
                 {
                     std::lock_guard<std::mutex> lock(resultsMutex);
                     allResults.push_back(result);
-                }
-                {
-                    std::lock_guard<std::mutex> lock(completionMutex);
-                    if (--activeTasks == 0) {
-                        completionCV.notify_one();
-                    }
                 }
             });
         }
