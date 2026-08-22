@@ -139,9 +139,10 @@ ctest --test-dir build
 
 ## Database Schema
 
-The tool creates four tables:
+The tool creates five tables:
 
 1. `hosts` table: Stores IP addresses and hostnames with creation and last seen timestamps
 2. `ping_results` table: Unified table storing all ping results (IP, hostname, delay, success status, timestamp)
 3. `alerts` table: Tracks host down-alerts with creation time
 4. `recovery_records` table: Records when hosts recover from alert state
+5. `mping_meta` table: Internal metadata (e.g. last auto-cleanup timestamp, throttled to once per 24h)

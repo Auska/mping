@@ -20,6 +20,10 @@ struct ConfigDefaults {
     static constexpr const char* DEFAULT_FILENAME = "ip.txt";
     // ping 结果默认保留天数
     static constexpr int DEFAULT_PING_RESULTS_CLEANUP_DAYS = 30;
+    // 自动清理节流：距上次自动清理不足该秒数时跳过（分区清理为低频操作，避免每次运行重复查询）
+    static constexpr int CLEANUP_MIN_INTERVAL_SECONDS = 24 * 3600;
+    // mping_meta（内部元数据表）键名：上次自动清理时间（UTC 文本）
+    static constexpr const char* META_LAST_AUTO_PING_CLEANUP = "last_auto_ping_cleanup";
     // ping_results 按日分区（UTC 日界）：initialize 时预建今天起 N 天的分区；
     // 更早日期（停机恢复、历史回填）在插入遇到 23514 时自动补建
     static constexpr int PING_PARTITION_LOOKAHEAD_DAYS = 30;

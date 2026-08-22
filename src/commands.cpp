@@ -144,17 +144,15 @@ bool PingCommand::processAlerts(DatabaseManagerPG* db, const std::vector<PingRes
         return false;
     }
 
-    // 只在实际状态变化时写入
+    // 只在实际状态变化时写入；新增告警聚合为单次批量 UPSERT（单条语句）
     bool success = true;
+    std::vector<std::tuple<std::string, std::string>> newAlerts;
     for (const auto& r : allResults) {
         bool isCurrentlyAlerted = alertIPs.count(r.ip) > 0;
 
         if (!r.success && !isCurrentlyAlerted) {
-            // 刚刚不通，且之前没有告警 → 新增告警
-            if (!db->addAlert(r.ip, r.hostname)) {
-                std::println(std::cerr, "Failed to add alert for IP: {}", r.ip);
-                success = false;
-            }
+            // 刚刚不通，且之前没有告警 → 待新增告警（批量写入）
+            newAlerts.emplace_back(r.ip, r.hostname);
         } else if (r.success && isCurrentlyAlerted) {
             // 刚刚恢复正常，且之前有告警 → 移除告警并记录恢复
             if (!db->removeAlert(r.ip)) {
@@ -163,6 +161,10 @@ bool PingCommand::processAlerts(DatabaseManagerPG* db, const std::vector<PingRes
             }
         }
         // 状态无变化 → 跳过写操作
+    }
+    if (!newAlerts.empty() && !db->addAlerts(newAlerts)) {
+        std::println(std::cerr, "Failed to add alerts for {} IP(s)", newAlerts.size());
+        success = false;
     }
 
     return success;
@@ -211,7 +213,7 @@ bool PingCommand::persistResults(std::vector<PingResult>& allResults,
         return false;
     }
 
-    // 每次检查后自动清理 ping_results 表中超过指定天数的旧记录
+    // 自动清理 ping_results 过期记录（24h 节流，见 cleanupOldPingResults）
     db->cleanupOldPingResults(ConfigDefaults::DEFAULT_PING_RESULTS_CLEANUP_DAYS);
     return true;
 }

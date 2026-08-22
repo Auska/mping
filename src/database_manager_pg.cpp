@@ -120,6 +120,21 @@ PGresult* DatabaseManagerPG::executeQueryWithResult(const std::string& query) {
     return res;
 }
 
+PGresult* DatabaseManagerPG::execParams(const std::string& sql,
+                                        const std::vector<std::string>& params) {
+    std::vector<const char*> values;
+    std::vector<int> lengths;
+    values.reserve(params.size());
+    lengths.reserve(params.size());
+    for (const auto& p : params) {
+        values.push_back(p.c_str());
+        lengths.push_back(static_cast<int>(p.length()));
+    }
+    std::vector<int> formats(params.size(), 0);
+    return PQexecParams(conn.get(), sql.c_str(), static_cast<int>(params.size()), nullptr,
+                        values.data(), lengths.data(), formats.data(), 0);
+}
+
 bool DatabaseManagerPG::connectSession() {
     PGconn* rawConn = PQconnectdb(connInfo.c_str());
     if (rawConn == nullptr) {
@@ -221,6 +236,19 @@ bool DatabaseManagerPG::prepareSchema() {
         return false;
     }
 
+    // 创建mping_meta表，存储内部元数据（如自动清理节流标记）
+    const char* createMetaTableSQL = R"(
+        CREATE TABLE IF NOT EXISTS mping_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+    )";
+
+    if (!executeQuery(createMetaTableSQL)) {
+        std::println(std::cerr, "Failed to create mping_meta table");
+        return false;
+    }
+
     // 迁移旧 TIMESTAMP 列为 TIMESTAMPTZ
     if (!SchemaMigrator::migrateSchema(*this)) {
         std::println(std::cerr, "Warning: Schema migration incomplete, continuing anyway");
@@ -258,7 +286,7 @@ bool DatabaseManagerPG::initializeForQuery() {
 // 辅助函数：批量插入主机信息
 // 单事务内参数化插入，防止 SQL 注入；任一失败回滚并返回 false。
 // 先试单条多行 VALUES（一次往返）；分区表遇缺失分区（SQLSTATE 23514）
-// 时回退到逐行 SAVEPOINT 插入，补建目标日分区后重试该行（最多一次）
+// 时回退到逐行 SAVEPOINT 插入（insertRowsWithSavepoints），补建目标日分区后重试该行
 bool DatabaseManagerPG::insertBatch(
     const char* sqlPrefix, const char* rowTemplate, const char* sqlSuffix,
     const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
@@ -308,10 +336,7 @@ bool DatabaseManagerPG::insertBatch(
         return out;
     };
 
-    // 参数格式：0 表示文本格式
-    std::vector<int> formats(allParams.size() * nParamsPerRow, 0);
-
-    // ─── 批量路径：单条多行 VALUES 语句 ───
+    // ─── 批量路径：单条多行 VALUES 语句（一次往返）───
     const std::string tpl(rowTemplate);
     std::string all;
     all.reserve(allParams.size() * (tpl.size() + 8));
@@ -323,20 +348,14 @@ bool DatabaseManagerPG::insertBatch(
     }
     const std::string bulkSQL = std::string(sqlPrefix) + all + sqlSuffix;
 
-    std::vector<const char*> values;
-    std::vector<int> lengths;
-    values.reserve(allParams.size() * nParamsPerRow);
-    lengths.reserve(allParams.size() * nParamsPerRow);
+    std::vector<std::string> flat;
+    flat.reserve(allParams.size() * nParamsPerRow);
     for (const auto& rowParams : allParams) {
-        for (const auto& p : rowParams) {
-            values.push_back(p.c_str());
-            lengths.push_back(static_cast<int>(p.length()));
-        }
+        flat.insert(flat.end(), rowParams.begin(), rowParams.end());
     }
 
-    PGresult* res = PQexecParams(conn.get(), bulkSQL.c_str(), static_cast<int>(values.size()),
-                                 nullptr, values.data(), lengths.data(), formats.data(), 0);
-    if (PQresultStatus(res) == PGRES_COMMAND_OK) {
+    PGresult* res = execParams(bulkSQL, flat);
+    if (res != nullptr && PQresultStatus(res) == PGRES_COMMAND_OK) {
         PQclear(res);
         if (!executeQuery("COMMIT;")) {
             std::println(std::cerr, "Failed to commit batch insert");
@@ -346,31 +365,41 @@ bool DatabaseManagerPG::insertBatch(
     }
 
     // 分区缺失（23514）→ 回退逐行插入；其余错误直接失败
-    const char* sqlstate     = PQresultErrorField(res, PG_DIAG_SQLSTATE);
-    const bool needsFallback = partitionedInsert && sqlstate && std::strcmp(sqlstate, "23514") == 0;
-    if (!needsFallback) {
-        std::println(std::cerr, "Failed to insert batch: {}", PQresultErrorMessage(res));
+    const char* sqlstate = res != nullptr ? PQresultErrorField(res, PG_DIAG_SQLSTATE) : nullptr;
+    const bool needsFallback =
+        partitionedInsert && sqlstate != nullptr && std::strcmp(sqlstate, "23514") == 0;
+    const std::string bulkError = res != nullptr ? PQresultErrorMessage(res) : "out of memory";
+    if (res != nullptr) {
         PQclear(res);
+    }
+    if (!needsFallback) {
+        std::println(std::cerr, "Failed to insert batch: {}", bulkError);
         executeQuery("ROLLBACK;");
         return false;
     }
-    PQclear(res);
 
     // ─── 回退路径：逐行 SAVEPOINT 插入（分区补建后重试同一行）───
     const std::string rowSQL = std::string(sqlPrefix) + tpl + sqlSuffix;
+    if (!insertRowsWithSavepoints(rowSQL, rows, allParams)) {
+        return false;  // 已回滚
+    }
+
+    // 提交事务
+    if (!executeQuery("COMMIT;")) {
+        std::println(std::cerr, "Failed to commit batch insert");
+        return false;
+    }
+
+    return true;
+}
+
+// 逐行 SAVEPOINT 插入：目标日分区缺失（SQLSTATE 23514）时补建分区并重试该行（最多一次）；
+// 任何失败都已回滚事务并返回 false
+bool DatabaseManagerPG::insertRowsWithSavepoints(
+    const std::string& rowSQL,
+    const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
+    const std::vector<std::vector<std::string>>& allParams) {
     for (size_t i = 0; i < rows.size(); i++) {
-        const auto& params = allParams[i];
-
-        std::vector<const char*> rowValues;
-        std::vector<int> rowLengths;
-        rowValues.reserve(params.size());
-        rowLengths.reserve(params.size());
-        for (const auto& p : params) {
-            rowValues.push_back(p.c_str());
-            rowLengths.push_back(static_cast<int>(p.length()));
-        }
-        std::vector<int> rowFormats(params.size(), 0);
-
         bool inserted = false;
         bool retried  = false;
         while (!inserted) {
@@ -379,21 +408,22 @@ bool DatabaseManagerPG::insertBatch(
                 executeQuery("ROLLBACK;");
                 return false;
             }
-            PGresult* rowRes =
-                PQexecParams(conn.get(), rowSQL.c_str(), static_cast<int>(params.size()), nullptr,
-                             rowValues.data(), rowLengths.data(), rowFormats.data(), 0);
-            if (PQresultStatus(rowRes) == PGRES_COMMAND_OK) {
+            PGresult* res = execParams(rowSQL, allParams[i]);
+            if (res != nullptr && PQresultStatus(res) == PGRES_COMMAND_OK) {
                 inserted = true;
-                PQclear(rowRes);
+                PQclear(res);
                 executeQuery("RELEASE SAVEPOINT sp_ping_row;");
                 break;
             }
-            const char* rowSqlstate = PQresultErrorField(rowRes, PG_DIAG_SQLSTATE);
-            if (!retried && rowSqlstate && std::strcmp(rowSqlstate, "23514") == 0) {
+            const char* sqlstate =
+                res != nullptr ? PQresultErrorField(res, PG_DIAG_SQLSTATE) : nullptr;
+            if (!retried && sqlstate != nullptr && std::strcmp(sqlstate, "23514") == 0) {
                 // 先回滚到保存点撤销失败语句对事务的污染，再补建分区并重试同一行
                 executeQuery("ROLLBACK TO SAVEPOINT sp_ping_row;");
                 executeQuery("RELEASE SAVEPOINT sp_ping_row;");
-                PQclear(rowRes);
+                if (res != nullptr) {
+                    PQclear(res);
+                }
                 retried = true;
                 if (!SchemaMigrator::createPartitionForTimestamp(*this, std::get<4>(rows[i]))) {
                     std::println(std::cerr, "Failed to create partition for record of IP {}",
@@ -404,19 +434,14 @@ bool DatabaseManagerPG::insertBatch(
                 continue;
             }
             std::println(std::cerr, "Failed to insert record for IP {}: {}", std::get<0>(rows[i]),
-                         PQresultErrorMessage(rowRes));
-            PQclear(rowRes);
+                         res != nullptr ? PQresultErrorMessage(res) : "out of memory");
+            if (res != nullptr) {
+                PQclear(res);
+            }
             executeQuery("ROLLBACK;");
             return false;
         }
     }
-
-    // 提交事务
-    if (!executeQuery("COMMIT;")) {
-        std::println(std::cerr, "Failed to commit batch insert");
-        return false;
-    }
-
     return true;
 }
 
@@ -512,13 +537,8 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
 }
 
 std::string DatabaseManagerPG::queryHostName(const std::string& ip) {
-    const char* sql     = "SELECT hostname FROM hosts WHERE ip = $1";
-    const char* vals[1] = {ip.c_str()};
-    int lens[1]         = {static_cast<int>(ip.length())};
-    int fmts[1]         = {0};
-
-    PGresult* res = PQexecParams(conn.get(), sql, 1, nullptr, vals, lens, fmts, 0);
-    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
+    PGresult* res = execParams("SELECT hostname FROM hosts WHERE ip = $1", {ip});
+    if (res == nullptr || PQresultStatus(res) != PGRES_TUPLES_OK) {
         if (res) PQclear(res);
         return {};
     }
@@ -533,18 +553,14 @@ std::string DatabaseManagerPG::queryHostName(const std::string& ip) {
 
 PingStatistics DatabaseManagerPG::queryStatistics(const std::string& ip) {
     PingStatistics stats;
-    const char* sql =
+    PGresult* res = execParams(
         "SELECT COUNT(*), COUNT(*) FILTER (WHERE success = true), "
         "AVG(delay) FILTER (WHERE success = true), "
         "MAX(delay) FILTER (WHERE success = true), "
         "MIN(delay) FILTER (WHERE success = true) "
-        "FROM ping_results WHERE ip = $1";
-    const char* vals[1] = {ip.c_str()};
-    int lens[1]         = {static_cast<int>(ip.length())};
-    int fmts[1]         = {0};
-
-    PGresult* res = PQexecParams(conn.get(), sql, 1, nullptr, vals, lens, fmts, 0);
-    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
+        "FROM ping_results WHERE ip = $1",
+        {ip});
+    if (res == nullptr || PQresultStatus(res) != PGRES_TUPLES_OK) {
         if (res) PQclear(res);
         return stats;
     }
@@ -566,15 +582,11 @@ PingStatistics DatabaseManagerPG::queryStatistics(const std::string& ip) {
 }
 
 void DatabaseManagerPG::printRecentRecords(const std::string& ip) {
-    const char* sql =
+    PGresult* res = execParams(
         "SELECT delay, success, timestamp FROM ping_results WHERE ip = $1 "
-        "ORDER BY timestamp DESC LIMIT 10";
-    const char* vals[1] = {ip.c_str()};
-    int lens[1]         = {static_cast<int>(ip.length())};
-    int fmts[1]         = {0};
-
-    PGresult* res = PQexecParams(conn.get(), sql, 1, nullptr, vals, lens, fmts, 0);
-    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
+        "ORDER BY timestamp DESC LIMIT 10",
+        {ip});
+    if (res == nullptr || PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to query recent records");
         if (res) PQclear(res);
         return;
@@ -595,19 +607,13 @@ void DatabaseManagerPG::printRecentRecords(const std::string& ip) {
 // 边界日内更早的行仍用 DELETE 精确删除
 int DatabaseManagerPG::deleteOldPingResults(int days) {
     // 1. 列出整日已过期的分区（分区名 ping_results_YYYYMMDD，UTC 日界）
-    const char* listSQL =
+    PGresult* res = execParams(
         "SELECT tablename FROM pg_tables "
         "WHERE schemaname = 'public' AND tablename ~ '^ping_results_[0-9]{8}$' "
         "AND to_timestamp(substring(tablename FROM 14), 'YYYYMMDD') + INTERVAL '1 day' "
-        "<= NOW() - ($1 * INTERVAL '1 day') ORDER BY tablename";
-    std::string daysStr        = std::to_string(days);
-    const char* paramValues[1] = {daysStr.c_str()};
-    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
-    int paramFormats[1]        = {0};
-
-    PGresult* res =
-        PQexecParams(conn.get(), listSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK) {
+        "<= NOW() - ($1 * INTERVAL '1 day') ORDER BY tablename",
+        {std::to_string(days)});
+    if (res == nullptr || PQresultStatus(res) != PGRES_TUPLES_OK) {
         std::println(std::cerr, "Failed to list old ping_results partitions: {}",
                      res ? PQresultErrorMessage(res) : "out of memory");
         if (res) PQclear(res);
@@ -629,11 +635,9 @@ int DatabaseManagerPG::deleteOldPingResults(int days) {
     }
 
     // 2. 剩余过期行（当前日分区内）逐行删除，保证清理边界精确
-    const char* deleteSQL =
-        "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
-    res =
-        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
+    res = execParams("DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')",
+                     {std::to_string(days)});
+    if (res == nullptr || PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to delete old ping results: {}",
                      res ? PQresultErrorMessage(res) : "out of memory");
         if (res) PQclear(res);
@@ -662,15 +666,9 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
 
     // 清理alerts表中超过指定天数的告警记录
-    const char* cleanupAlertsSQL =
-        "DELETE FROM alerts WHERE created_time < NOW() - ($1 * INTERVAL '1 day')";
-    std::string daysStr        = std::to_string(days);
-    const char* paramValues[1] = {daysStr.c_str()};
-    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
-    int paramFormats[1]        = {0};
-
-    PGresult* cleanupAlertsRes = PQexecParams(conn.get(), cleanupAlertsSQL, 1, nullptr, paramValues,
-                                              paramLengths, paramFormats, 0);
+    PGresult* cleanupAlertsRes =
+        execParams("DELETE FROM alerts WHERE created_time < NOW() - ($1 * INTERVAL '1 day')",
+                   {std::to_string(days)});
 
     if (PQresultStatus(cleanupAlertsRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to cleanup old alerts: {}",
@@ -687,10 +685,9 @@ void DatabaseManagerPG::cleanupOldData(int days) {
     }
 
     // 清理recovery_records表中超过指定天数的恢复记录
-    const char* cleanupRecoverySQL =
-        "DELETE FROM recovery_records WHERE recovery_time < NOW() - ($1 * INTERVAL '1 day')";
-    PGresult* cleanupRecoveryRes = PQexecParams(conn.get(), cleanupRecoverySQL, 1, nullptr,
-                                                paramValues, paramLengths, paramFormats, 0);
+    PGresult* cleanupRecoveryRes = execParams(
+        "DELETE FROM recovery_records WHERE recovery_time < NOW() - ($1 * INTERVAL '1 day')",
+        {std::to_string(days)});
 
     if (PQresultStatus(cleanupRecoveryRes) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to cleanup old recovery records: {}",
@@ -717,6 +714,27 @@ void DatabaseManagerPG::cleanupOldPingResults(int days) {
         return;
     }
 
+    // 节流：距上次自动清理不足 CLEANUP_MIN_INTERVAL_SECONDS 秒时跳过（无输出）。
+    // ping 运行可能很频繁，分区 DROP/DELETE 是低频操作，避免每次运行多两次查询
+    const std::string interval =
+        std::to_string(ConfigDefaults::CLEANUP_MIN_INTERVAL_SECONDS) + " seconds";
+    PGresult* dueRes = execParams(
+        "SELECT COALESCE((SELECT value::timestamptz FROM mping_meta WHERE key = $1), 'epoch') "
+        "<= NOW() - $2::interval",
+        {ConfigDefaults::META_LAST_AUTO_PING_CLEANUP, interval});
+    if (dueRes == nullptr || PQresultStatus(dueRes) != PGRES_TUPLES_OK) {
+        std::println(std::cerr, "Failed to check cleanup throttle: {}",
+                     dueRes ? PQresultErrorMessage(dueRes) : "out of memory");
+        if (dueRes) PQclear(dueRes);
+        return;
+    }
+    const bool due =
+        PQgetisnull(dueRes, 0, 0) ? false : std::strcmp(PQgetvalue(dueRes, 0, 0), "t") == 0;
+    PQclear(dueRes);
+    if (!due) {
+        return;
+    }
+
     std::println(std::cout, "Cleaning up ping_results older than {} days...", days);
 
     int totalDeleted = deleteOldPingResults(days);
@@ -724,6 +742,51 @@ void DatabaseManagerPG::cleanupOldPingResults(int days) {
         return;
     }
     std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
+
+    // 记录本次自动清理时间（会话时区固定 UTC，NOW()::text 即为 UTC 时间戳）
+    PGresult* mark = execParams(
+        "INSERT INTO mping_meta (key, value) VALUES ($1, NOW()::text) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        {ConfigDefaults::META_LAST_AUTO_PING_CLEANUP});
+    if (mark == nullptr || PQresultStatus(mark) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to record cleanup time: {}",
+                     mark ? PQresultErrorMessage(mark) : "out of memory");
+        if (mark) PQclear(mark);
+    } else {
+        PQclear(mark);
+    }
+}
+
+// 批量新增告警：复用 insertBatch 的批量路径（非分区表，单条多行 UPSERT）。
+// IP 逐个校验，非法项打印警告并跳过；合法项仍批量写入（与原逐行失败不中断语义一致）
+bool DatabaseManagerPG::addAlerts(const std::vector<std::tuple<std::string, std::string>>& alerts) {
+    if (alerts.empty()) {
+        return true;
+    }
+
+    bool allValid = true;
+    std::vector<std::tuple<std::string, std::string, short, bool, std::string>> rows;
+    rows.reserve(alerts.size());
+    for (const auto& [ip, hostname] : alerts) {
+        if (!IPValidator::isValidIPv4(ip)) {
+            std::println(std::cerr, "Invalid IP address format: {}", ip);
+            allValid = false;
+            continue;
+        }
+        rows.emplace_back(ip, hostname, 0, false, "");
+    }
+    if (rows.empty()) {
+        return false;  // 全部非法（调用方会看到失败并打印提示）
+    }
+
+    return insertBatch(
+               "INSERT INTO alerts (ip, hostname, created_time) VALUES", "($1, $2, NOW())",
+               " ON CONFLICT (ip) DO NOTHING", rows,
+               [](const auto& row, std::vector<std::string>& params) {
+                   params = {std::get<0>(row), std::get<1>(row)};
+               },
+               /*partitionedInsert=*/false)
+           && allValid;
 }
 
 std::map<std::string, std::string> DatabaseManagerPG::getAllHosts() {
@@ -772,24 +835,11 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
     }
 
     // 使用参数化查询插入或更新告警记录
-    const char* paramValues[2];
-    int paramLengths[2];
-    int paramFormats[2];
-
-    paramValues[0]  = ip.c_str();
-    paramValues[1]  = hostname.c_str();
-    paramLengths[0] = static_cast<int>(ip.length());
-    paramLengths[1] = static_cast<int>(hostname.length());
-    paramFormats[0] = 0;
-    paramFormats[1] = 0;
-
-    const char* insertSQL =
+    PGresult* res = execParams(
         "INSERT INTO alerts (ip, hostname, created_time) "
         "VALUES ($1, $2, NOW()) "
-        "ON CONFLICT (ip) DO NOTHING";
-
-    PGresult* res =
-        PQexecParams(conn.get(), insertSQL, 2, nullptr, paramValues, paramLengths, paramFormats, 0);
+        "ON CONFLICT (ip) DO NOTHING",
+        {ip, hostname});
 
     if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to add alert for IP {}: {}", ip,
@@ -818,16 +868,11 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
 
     // 单条语句原子完成：删除告警并把被删告警写入恢复记录。
     // 告警不存在时无行删除也不产生恢复记录，且中途失败不会丢失恢复数据。
-    const char* sql =
+    PGresult* res = execParams(
         "WITH gone AS (DELETE FROM alerts WHERE ip = $1 RETURNING hostname, created_time) "
         "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) "
-        "SELECT $1, hostname, created_time, NOW() FROM gone";
-    const char* paramValues[1] = {ip.c_str()};
-    int paramLengths[1]        = {static_cast<int>(ip.length())};
-    int paramFormats[1]        = {0};
-
-    PGresult* res =
-        PQexecParams(conn.get(), sql, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+        "SELECT $1, hostname, created_time, NOW() FROM gone",
+        {ip});
     if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
         std::println(std::cerr, "Failed to remove alert for IP {}: {}", ip,
                      res ? PQresultErrorMessage(res) : "Unknown error");
@@ -849,13 +894,7 @@ PGresult* DatabaseManagerPG::executeOptionalDays(const char* sqlDays, const char
 
     if (days >= 0) {
         // 参数化查询：只取指定天数内的记录
-        std::string daysStr        = std::to_string(days);
-        const char* paramValues[1] = {daysStr.c_str()};
-        int paramLengths[1]        = {static_cast<int>(daysStr.length())};
-        int paramFormats[1]        = {0};
-
-        return PQexecParams(conn.get(), sqlDays, 1, nullptr, paramValues, paramLengths,
-                            paramFormats, 0);
+        return execParams(sqlDays, {std::to_string(days)});
     }
     return PQexec(conn.get(), sqlAll);
 }

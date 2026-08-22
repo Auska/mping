@@ -52,6 +52,10 @@ class DatabaseManagerPG {
     // 执行返回结果的查询
     PGresult* executeQueryWithResult(const std::string& query);
 
+    // 参数化查询执行器：params 为文本参数，内部构造 libpq 参数三件套（长度/格式），
+    // 失败时与 PQexecParams 一致返回 nullptr（错误由调用方检查）
+    PGresult* execParams(const std::string& sql, const std::vector<std::string>& params);
+
     // 连接数据库并配置会话（时区 UTC、消息级别、keepalive）；失败返回 false
     bool connectSession();
 
@@ -78,6 +82,13 @@ class DatabaseManagerPG {
             void(const std::tuple<std::string, std::string, short, bool, std::string>&,
                  std::vector<std::string>&)>& serialize,
         bool partitionedInsert);
+
+    // insertBatch 的 23514 回退路径：逐行 SAVEPOINT 插入，补建目标日分区后重试该行。
+    // allParams 为 insertBatch 已序列化的行参数；失败时已回滚事务
+    bool insertRowsWithSavepoints(
+        const std::string& rowSQL,
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& rows,
+        const std::vector<std::vector<std::string>>& allParams);
 
     // 查询执行器：days >= 0 时用 $1 参数化过滤，否则执行全部记录查询
     PGresult* executeOptionalDays(const char* sqlDays, const char* sqlAll, int days);
@@ -119,6 +130,10 @@ class DatabaseManagerPG {
 
     // 添加告警
     bool addAlert(const std::string& ip, const std::string& hostname);
+
+    // 批量新增告警（单条多行 UPSERT，ON CONFLICT DO NOTHING）；
+    // 任一 IP 非法或插入失败返回 false（合法 IP 仍会写入，与原逐行语义一致）
+    bool addAlerts(const std::vector<std::tuple<std::string, std::string>>& alerts);
 
     // 移除告警
     bool removeAlert(const std::string& ip);

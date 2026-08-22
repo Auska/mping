@@ -293,6 +293,7 @@ mping -S /path/to/config.conf
   - **按日分区**：RANGE 分区（UTC 日界），分区名 `ping_results_YYYYMMDD`；`initialize()`（Ping 写入路径）预建今天起未来 30 天分区；查询/清理命令使用轻量 `initializeForQuery()`（建表+迁移，不预建分区）。插入遇缺失分区（SQLSTATE 23514）时批量插入回退到逐行 SAVEPOINT 并补建分区后重试；旧版普通表在初始化时自动迁移（改名保留数据、回填、序列对齐，幂等）
 - **`alerts` 表**：跟踪主机状态告警
 - **`recovery_records` 表**：记录主机从故障中恢复的信息
+- **`mping_meta` 表**：内部元数据（如自动清理节流标记）
 
 ### 数据清理
 
@@ -303,6 +304,8 @@ mping -S /path/to/config.conf
 - **`recovery_records`**：删除超过指定天数的恢复记录
 
 > **注意**：`hosts` 表不会被清理，以保留主机列表信息。
+
+Ping 运行自动触发的 `ping_results` 过期清理带 **24 小时节流**（时间戳存于 `mping_meta`），避免高频运行重复查询；`-C` 显式清理不受节流限制。
 
 ## 测试
 
