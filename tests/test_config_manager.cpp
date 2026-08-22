@@ -386,6 +386,29 @@ TEST_CASE("ConfigManager multiple options", "[config]") {
     }
 }
 
+TEST_CASE("ConfigManager invalid arguments", "[config]") {
+    SECTION("Unknown option is rejected") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-x"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
+    }
+
+    SECTION("Unknown long option is rejected") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "--bogus"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
+    }
+
+    SECTION("Missing required argument is rejected") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping", "-d"});
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
+    }
+}
+
 TEST_CASE("ConfigManager no arguments", "[config]") {
     SECTION("No arguments shows help") {
         reset_getopt();

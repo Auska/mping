@@ -113,12 +113,20 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
     return configFile.save(savePath);
 }
 
-bool ConfigManager::parseArguments(int argc, char* argv[]) {
+bool ConfigManager::parseArguments(int argc, char* argv[], int* exitCode) {
     // 如果没有提供任何参数，打印帮助信息并退出
     if (argc == 1) {
         printUsage(argv[0]);
         return false;
     }
+
+    // 参数错误时写入 1，正常退出（-h/-v/-S）保持 0
+    auto failWithError = [&] {
+        if (exitCode) {
+            *exitCode = 1;
+        }
+        return false;
+    };
 
     // 定义长选项
     const struct option long_options[] = {{"help", no_argument, nullptr, 'h'},
@@ -145,6 +153,10 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
     while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::vc:NS::", long_options, nullptr))
            != -1) {
         switch (opt) {
+            case '?':
+                // 未知选项或缺必需参数：getopt 已打印原因，给出提示并以错误码退出
+                std::println(std::cerr, "Try '{} --help' for more information.", argv[0]);
+                return failWithError();
             case 'h':
                 printUsage(argv[0]);
                 return false;
@@ -165,14 +177,14 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 alertsBare = (optarg == nullptr);
                 if (!parseOptionalDays(optarg, "Alert", config.queryAlerts,
                                        ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS)) {
-                    return false;
+                    return failWithError();
                 }
                 break;
             case 'r':
                 recoveryBare = (optarg == nullptr);
                 if (!parseOptionalDays(optarg, "Recovery record", config.queryRecoveryRecords,
                                        ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS)) {
-                    return false;
+                    return failWithError();
                 }
                 break;
             case 's':
@@ -183,7 +195,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[]) {
                 cleanupBare           = (optarg == nullptr);
                 if (!parseOptionalDays(optarg, "Cleanup", config.cleanupDays,
                                        ConfigDefaults::DEFAULT_CLEANUP_DAYS)) {
-                    return false;
+                    return failWithError();
                 }
                 break;
             case 'c':

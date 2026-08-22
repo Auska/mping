@@ -329,7 +329,9 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **44 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **349 个断言**。
+当前共 **45 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **352 个断言**。
+
+退出码约定：`-h`/`-v`/`-S` 正常完成返回 0；未知选项、缺少必需参数、非法的 `-a`/`-r`/`-C` 天数等参数错误返回 1；命令执行失败（如主机文件不存在、数据库初始化失败）返回 1。
 
 ### 运行测试
 

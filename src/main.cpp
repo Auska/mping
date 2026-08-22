@@ -32,8 +32,9 @@ std::unique_ptr<Command> dispatchCommand(const ConfigManager::Config& config) {
 int main(int argc, char* argv[]) {
     try {
         ConfigManager configManager;
-        if (!configManager.parseArguments(argc, argv)) {
-            return 0;
+        int exitCode = 0;
+        if (!configManager.parseArguments(argc, argv, &exitCode)) {
+            return exitCode;
         }
         return dispatchCommand(configManager.getConfig())->execute();
     } catch (const std::exception& e) {

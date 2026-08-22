@@ -37,8 +37,9 @@ class ConfigManager {
    public:
     ConfigManager(bool loadConfig = true);
 
-    // 解析命令行参数
-    bool parseArguments(int argc, char* argv[]);
+    // 解析命令行参数；返回 false 时程序应退出，exitCode 非空则写入建议退出码
+    // （0 = 正常完成如 -h/-v/-S，1 = 参数错误）
+    bool parseArguments(int argc, char* argv[], int* exitCode = nullptr);
 
     // 获取配置
     const Config& getConfig() const;
