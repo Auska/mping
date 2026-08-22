@@ -4,15 +4,13 @@
 #include <map>
 #include <memory>
 #include <print>
-#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "config_manager.h"
 #include "constants.h"
-#include "database_factory.h"
-#include "database_interface.h"
+#include "database_manager_pg.h"
 #include "ping_manager.h"
 #include "utils.h"
 
@@ -23,29 +21,11 @@
 Command::Command(const ConfigManager::Config& cfg) : config(cfg) {
 }
 
-std::unique_ptr<DatabaseInterface> Command::createDatabase() {
-    DatabaseType dbType = DatabaseType::SQLITE;
-
-#ifdef USE_POSTGRESQL
-    if (config.usePostgreSQL
-        || DatabaseFactory::detectDatabaseType(config.databasePath) == DatabaseType::POSTGRESQL) {
-        dbType = DatabaseType::POSTGRESQL;
-    }
-#else
-    // POSTGRESQL 未启用时 detectDatabaseType 已返回 SQLITE
-    dbType = DatabaseFactory::detectDatabaseType(config.databasePath);
-#endif
-
-    auto db = DatabaseFactory::createDatabase(dbType, config.databasePath);
-    if (!db) {
-        // 不应发生：SQLite 始终编译。仅在数据库后端编译缺失时触发
-        throw std::runtime_error(
-            "Database backend is not compiled in (check USE_SQLITE/USE_POSTGRESQL macros)");
-    }
-    return db;
+std::unique_ptr<DatabaseManagerPG> Command::createDatabase() {
+    return std::make_unique<DatabaseManagerPG>(config.databasePath);
 }
 
-bool Command::initializeDatabase(DatabaseInterface& db) {
+bool Command::initializeDatabase(DatabaseManagerPG& db) {
     if (!db.initialize()) {
         std::println(std::cerr, "Failed to initialize database");
         return false;
@@ -152,7 +132,7 @@ int QueryRecoveryCommand::execute() {
 //  PingCommand
 // ══════════════════════════════════════════════════════════════════════════
 
-bool PingCommand::insertPingResults(DatabaseInterface* db,
+bool PingCommand::insertPingResults(DatabaseManagerPG* db,
                                     const std::vector<PingResult>& allResults) {
     if (!db) {
         return false;
@@ -171,7 +151,7 @@ bool PingCommand::insertPingResults(DatabaseInterface* db,
 
 bool PingCommand::confirmFailuresWithRetry(PingManager& pingManager,
                                            std::vector<PingResult>& allResults,
-                                           DatabaseInterface* db,
+                                           DatabaseManagerPG* db,
                                            const std::unordered_set<std::string>& alertIPs) {
     if (!db) {
         return false;
@@ -216,7 +196,7 @@ bool PingCommand::confirmFailuresWithRetry(PingManager& pingManager,
     return true;
 }
 
-bool PingCommand::processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults,
+bool PingCommand::processAlerts(DatabaseManagerPG* db, const std::vector<PingResult>& allResults,
                                 const std::unordered_set<std::string>& alertIPs) {
     if (!db) {
         return false;
@@ -252,7 +232,7 @@ int PingCommand::execute() {
     // 否则如果启用了数据库，则从数据库的 hosts 表读取主机列表
     // 如果两者都没有指定，则默认从 ip.txt 文件读取
     // db 在启用数据库时创建一次，供取主机与存结果复用
-    std::unique_ptr<DatabaseInterface> db;
+    std::unique_ptr<DatabaseManagerPG> db;
     std::map<std::string, std::string> hosts;
 
     if (!config.filename.empty()) {

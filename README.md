@@ -8,19 +8,16 @@ The project follows a command-pattern architecture with modular design:
 - `commands.h`/`commands.cpp`: Command abstraction and 5 sub-commands (QueryIP, Cleanup, QueryAlerts, QueryRecovery, Ping)
 - `utils.cpp`/`utils.h`: Utility functions for file operations
 - `ping_manager.cpp`/`ping_manager.h`: Core ping functionality (concurrent, thread pool)
-- `database_manager.cpp`/`database_manager.h`: Database operations (SQLite)
 - `database_manager_pg.cpp`/`database_manager_pg.h`: Database operations (PostgreSQL)
 - `config_manager.cpp`/`config_manager.h`: Configuration management (XDG-compliant)
 - `config_file.cpp`/`config_file.h`: INI-style config file parser
-- `database_factory.cpp`/`database_factory.h`: Database factory pattern
-- `database_interface.h`/`database_base.h`: Database abstraction layer
 
 ## Features
 
 - Concurrently ping multiple hosts for faster results (thread pool, up to 50 concurrent)
 - Read hosts from a file or database
 - Display all hosts with status and response time
-- Database logging of ping results with SQLite or PostgreSQL
+- Database logging of ping results (PostgreSQL)
 - Query statistics for specific IP addresses
 - Alert tracking with automatic recovery recording
 - Config file support (XDG-compliant, INI format)
@@ -36,7 +33,7 @@ The project follows a command-pattern architecture with modular design:
 ### Options
 
 - `-h`, `--help`: Show help message
-- `-d`, `--database`: Enable database logging and specify database path/connection string
+- `-d`, `--database`: Enable database logging and specify PostgreSQL connection string (libpq format)
 - `-f`, `--file`: Specify input file with hosts (default: ip.txt)
 - `-q`, `--query`: Query statistics for a specific IP address (requires -d)
 - `-a`, `--alerts [n]`: Query active alerts (requires -d, n: days, default: all)
@@ -50,11 +47,12 @@ The project follows a command-pattern architecture with modular design:
 - Default filename: `ip.txt`
 - Default behavior: Show all hosts with status (IP, hostname, status, delay)
 
-### Raw socket mode (recommended for non-root)
+### Raw socket mode (requires root or cap_net_raw)
 
-mping uses raw ICMP sockets when run as root (or with the `cap_net_raw` capability),
-otherwise it falls back to spawning a system `ping` process per host. To enable the
-raw-socket path for unprivileged users without full root, grant the capability once:
+mping sends ICMP echo requests through raw sockets, which require root privileges
+or the `cap_net_raw` capability. If the capability is missing the socket cannot be
+opened and every host is reported as unreachable. To enable unprivileged use
+without full root, grant the capability once:
 
 ```bash
 sudo setcap cap_net_raw+ep $(which mping)
@@ -82,17 +80,12 @@ To build mping, you need:
 
 - CMake 3.16+
 - A C++23 compatible compiler (GCC 13+, Clang 16+)
-- SQLite3 development libraries
-- PostgreSQL development libraries (optional, for PostgreSQL support)
+- PostgreSQL development libraries (libpq)
 - Catch2 v3 (optional, for building tests)
 
 ```bash
-# Configure and build (SQLite only support)
+# Configure and build (PostgreSQL is the only database backend)
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-
-# For PostgreSQL support
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_USE_POSTGRESQL=ON
 cmake --build build -j
 
 # Build with tests
@@ -110,44 +103,35 @@ ctest --test-dir build
 ## Example
 
 ```bash
-# Ping all hosts in ip.txt with SQLite database logging
-./mping -d ping_monitor.db
-
-# Ping all hosts in silent mode
-./mping -d ping_monitor.db -s
-
-# Query statistics for a specific IP
-./mping -d ping_monitor.db -q 10.224.1.11
-
-# Query all active alerts
-./mping -d ping_monitor.db -a
-
-# Query alerts within the last 7 days
-./mping -d ping_monitor.db -a 7
-
-# Query alerts within the last 30 days with PostgreSQL
-./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -a 30
-
-# Clean up data older than 30 days (default)
-./mping -d ping_monitor.db -C
-
-# Clean up data older than 60 days
-./mping -d ping_monitor.db -C 60
-
-# Use a different database path
-./mping -d /path/to/mydb.db
-
-# Use a different input file
-./mping -d ping_monitor.db -f my_hosts.txt
-
-# Use PostgreSQL database (auto-detected from connection string)
+# Ping all hosts in ip.txt with PostgreSQL database logging
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb"
 
-# Use PostgreSQL database and suppress NOTICE messages
-./mping -d "host=localhost user=myuser password=mypass dbname=mydb client_min_messages=warning"
+# Ping all hosts in silent mode
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -s
 
-# Query statistics for a specific IP with PostgreSQL
+# Query statistics for a specific IP
 ./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -q 10.224.1.11
+
+# Query all active alerts
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -a
+
+# Query alerts within the last 7 days
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -a 7
+
+# Clean up data older than 30 days (default)
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -C
+
+# Clean up data older than 60 days
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -C 60
+
+# Use a different input file
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb" -f my_hosts.txt
+
+# Use PostgreSQL database
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb"
+
+# Suppress NOTICE messages
+./mping -d "host=localhost user=myuser password=mypass dbname=mydb client_min_messages=warning"
 ```
 
 ## Database Schema

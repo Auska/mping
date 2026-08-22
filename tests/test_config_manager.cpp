@@ -42,7 +42,7 @@ TEST_CASE("ConfigManager default values", "[config]") {
 
         REQUIRE(config.filename == "");
         REQUIRE(config.enableDatabase == false);
-        REQUIRE(config.databasePath == "ping_monitor.db");
+        REQUIRE(config.databasePath == "host=localhost user=postgres dbname=mping");
         REQUIRE(config.silentMode == false);
         REQUIRE(config.queryIP == "");
         REQUIRE(config.cleanupDays == -1);

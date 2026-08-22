@@ -1,31 +1,25 @@
 #include <catch2/catch_all.hpp>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <vector>
 
 #include "commands.h"
 #include "constants.h"
-#include "database_factory.h"
-#include "database_manager.h"
+#include "database_manager_pg.h"
 #include "test_helpers.h"
-#ifdef USE_POSTGRESQL
-#include "database_manager_pg.h"
-#endif
-#include "database_factory.h"
-#include "database_manager.h"
-#ifdef USE_POSTGRESQL
-#include "database_manager_pg.h"
-#endif
 
-// 辅助函数：创建带数据的临时数据库
+// 需要数据库的命令测试依赖真实 PostgreSQL 服务：
+// 通过环境变量 MPING_TEST_PG_CONNSTR 指定连接串（见 test_helpers.h），
+// 服务不可达时对应测试自动跳过（SKIP），不影响其余测试。
+//
+//   MPING_TEST_PG_CONNSTR='host=localhost user=postgres dbname=mping_test' ./build/mping_tests
+
+// 在测试数据库中建表并填充数据，返回连接串（调用方需先确认 pgAvailable()）
 static std::string createPopulatedDatabase() {
-    std::string testDb = "/tmp/test_commands_XXXXXX.db";
-    int fd             = mkstemps(testDb.data(), 3);
-    REQUIRE(fd >= 0);
-    close(fd);
-
-    DatabaseManager db(testDb);
-    REQUIRE(db.initialize());
+    auto db = std::make_unique<DatabaseManagerPG>(testPgConnstr());
+    REQUIRE(db != nullptr);
+    REQUIRE(db->initialize());
 
     // 插入 ping 结果
     std::vector<std::tuple<std::string, std::string, short, bool, std::string>> results = {
@@ -36,13 +30,13 @@ static std::string createPopulatedDatabase() {
         {"192.168.1.2", "host2", 0, false, "2025-01-01 00:01:00"},
         {"10.0.0.1", "host3", 0, false, "2025-01-01 00:00:00"},
     };
-    REQUIRE(db.insertPingResults(results));
+    REQUIRE(db->insertPingResults(results));
 
     // 添加告警
-    REQUIRE(db.addAlert("192.168.1.2", "host2"));
-    REQUIRE(db.addAlert("10.0.0.1", "host3"));
+    REQUIRE(db->addAlert("192.168.1.2", "host2"));
+    REQUIRE(db->addAlert("10.0.0.1", "host3"));
 
-    return testDb;
+    return testPgConnstr();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -50,26 +44,18 @@ static std::string createPopulatedDatabase() {
 // ══════════════════════════════════════════════════════════════════════════
 
 TEST_CASE("Command creates database correctly", "[commands][base]") {
-    std::string testDb = "/tmp/test_cmd_base_XXXXXX.db";
-    int fd             = mkstemps(testDb.data(), 3);
-    REQUIRE(fd >= 0);
-    close(fd);
-
-    SECTION("Creates and initializes SQLite database") {
-        // 使用 DatabaseFactory 直接测试，而非通过受保护的方法
-        auto db = DatabaseFactory::createDatabase(DatabaseType::SQLITE, testDb);
-        REQUIRE(db != nullptr);
-        REQUIRE(db->initialize());
-    }
-
-    std::filesystem::remove(testDb);
+    auto db = std::make_unique<DatabaseManagerPG>(testPgConnstr());
+    REQUIRE(db != nullptr);
 }
 
-TEST_CASE("Command handles invalid database path", "[commands][base]") {
-    SECTION("DatabaseFactory returns nullptr for unsupported type") {
-        auto db =
-            DatabaseFactory::createDatabase(DatabaseType::SQLITE, "/nonexistent/deep/path/db.db");
-        // Returns a DatabaseManager but init will fail
+TEST_CASE("Command handles invalid database connection", "[commands][base]") {
+    SECTION("Empty connection string throws") {
+        REQUIRE_THROWS_AS(std::make_unique<DatabaseManagerPG>(""), std::invalid_argument);
+    }
+
+    SECTION("Unreachable server fails to initialize") {
+        auto db = std::make_unique<DatabaseManagerPG>(
+            "host=127.0.0.1 port=1 user=postgres dbname=none connect_timeout=1");
         REQUIRE(db != nullptr);
         REQUIRE(db->initialize() == false);
     }
@@ -79,12 +65,15 @@ TEST_CASE("Command handles invalid database path", "[commands][base]") {
 //  QueryIPCommand
 // ══════════════════════════════════════════════════════════════════════════
 
-TEST_CASE("QueryIPCommand executes successfully", "[commands][query]") {
-    std::string testDb = createPopulatedDatabase();
+TEST_CASE("QueryIPCommand executes successfully", "[commands][query][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
+    }
+    std::string connstr = createPopulatedDatabase();
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath   = testDb;
+    cfg.databasePath   = connstr;
     cfg.queryIP        = "192.168.1.1";
 
     SECTION("Returns 0 for existing host") {
@@ -97,20 +86,21 @@ TEST_CASE("QueryIPCommand executes successfully", "[commands][query]") {
         QueryIPCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);  // 不报错，只是输出统计为零
     }
-
-    std::filesystem::remove(testDb);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  CleanupCommand
 // ══════════════════════════════════════════════════════════════════════════
 
-TEST_CASE("CleanupCommand executes successfully", "[commands][cleanup]") {
-    std::string testDb = createPopulatedDatabase();
+TEST_CASE("CleanupCommand executes successfully", "[commands][cleanup][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
+    }
+    std::string connstr = createPopulatedDatabase();
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath   = testDb;
+    cfg.databasePath   = connstr;
     cfg.cleanupDays    = 365;  // 清理一年前的数据（应该无影响）
 
     SECTION("Returns 0") {
@@ -123,25 +113,26 @@ TEST_CASE("CleanupCommand executes successfully", "[commands][cleanup]") {
         CleanupCommand cmd(cfg);
         cmd.execute();
 
-        DatabaseManager db(testDb);
-        REQUIRE(db.initialize());
-        auto hosts = db.getAllHosts();
+        auto db = std::make_unique<DatabaseManagerPG>(connstr);
+        REQUIRE(db->initialize());
+        auto hosts = db->getAllHosts();
         REQUIRE(hosts.size() >= 2);
     }
-
-    std::filesystem::remove(testDb);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  QueryAlertsCommand
 // ══════════════════════════════════════════════════════════════════════════
 
-TEST_CASE("QueryAlertsCommand executes successfully", "[commands][alerts]") {
-    std::string testDb = createPopulatedDatabase();
+TEST_CASE("QueryAlertsCommand executes successfully", "[commands][alerts][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
+    }
+    std::string connstr = createPopulatedDatabase();
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath   = testDb;
+    cfg.databasePath   = connstr;
 
     SECTION("Returns 0 with alerts present") {
         cfg.queryAlerts = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
@@ -154,27 +145,28 @@ TEST_CASE("QueryAlertsCommand executes successfully", "[commands][alerts]") {
         QueryAlertsCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);
     }
-
-    std::filesystem::remove(testDb);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  QueryRecoveryCommand
 // ══════════════════════════════════════════════════════════════════════════
 
-TEST_CASE("QueryRecoveryCommand executes successfully", "[commands][recovery]") {
-    std::string testDb = createPopulatedDatabase();
+TEST_CASE("QueryRecoveryCommand executes successfully", "[commands][recovery][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
+    }
+    std::string connstr = createPopulatedDatabase();
 
     // 先解决一个告警，产生恢复记录
     {
-        DatabaseManager db(testDb);
-        REQUIRE(db.initialize());
-        db.removeAlert("192.168.1.2");
+        auto db = std::make_unique<DatabaseManagerPG>(connstr);
+        REQUIRE(db->initialize());
+        db->removeAlert("192.168.1.2");
     }
 
     ConfigManager::Config cfg;
     cfg.enableDatabase = true;
-    cfg.databasePath   = testDb;
+    cfg.databasePath   = connstr;
 
     SECTION("Returns 0 with recovery records") {
         cfg.queryRecoveryRecords = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
@@ -193,8 +185,6 @@ TEST_CASE("QueryRecoveryCommand executes successfully", "[commands][recovery]") 
         QueryRecoveryCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);
     }
-
-    std::filesystem::remove(testDb);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -251,33 +241,46 @@ TEST_CASE("PingCommand with file-based hosts", "[commands][ping][file]") {
         REQUIRE(cmd.execute() == 0);
     }
 
-    SECTION("Executes ping with database enabled") {
-        std::string testDb = "/tmp/test_ping_cmd_XXXXXX.db";
-        int dbFd           = mkstemps(testDb.data(), 3);
-        REQUIRE(dbFd >= 0);
-        close(dbFd);
+    std::filesystem::remove(testFile);
+}
 
-        ConfigManager::Config cfg;
-        cfg.filename       = testFile;
-        cfg.enableDatabase = true;
-        cfg.databasePath   = testDb;
-        cfg.silentMode     = true;
-        PingCommand cmd(cfg);
-        REQUIRE(cmd.execute() == 0);
-
-        // 验证数据库中有数据
-        DatabaseManager db(testDb);
-        REQUIRE(db.initialize());
-        auto hosts = db.getAllHosts();
-        REQUIRE(hosts.size() >= 1);
-
-        std::filesystem::remove(testDb);
+TEST_CASE("PingCommand with database enabled", "[commands][ping][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
     }
+
+    std::string testFile = "/tmp/test_ping_cmd_XXXXXX.txt";
+    int fd               = mkstemps(testFile.data(), 4);
+    REQUIRE(fd >= 0);
+    close(fd);
+
+    std::ofstream file(testFile);
+    REQUIRE(file.is_open());
+    file << "127.0.0.1 localhost" << std::endl;
+    file.close();
+
+    ConfigManager::Config cfg;
+    cfg.filename       = testFile;
+    cfg.enableDatabase = true;
+    cfg.databasePath   = testPgConnstr();
+    cfg.silentMode     = true;
+    PingCommand cmd(cfg);
+    REQUIRE(cmd.execute() == 0);
+
+    // 验证数据库中有数据
+    auto db = std::make_unique<DatabaseManagerPG>(testPgConnstr());
+    REQUIRE(db->initialize());
+    auto hosts = db->getAllHosts();
+    REQUIRE(hosts.size() >= 1);
 
     std::filesystem::remove(testFile);
 }
 
-TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
+TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts][db]") {
+    if (!pgAvailable()) {
+        SKIP("PostgreSQL 不可达，跳过数据库命令测试（设置 MPING_TEST_PG_CONNSTR 可启用）");
+    }
+
     std::string testFile = "/tmp/test_alert_hosts_XXXXXX.txt";
     int fd               = mkstemps(testFile.data(), 4);
     REQUIRE(fd >= 0);
@@ -288,17 +291,12 @@ TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
     file << "127.0.0.1 localhost" << std::endl;
     file.close();
 
-    std::string testDb = "/tmp/test_alert_db_XXXXXX.db";
-    int dbFd           = mkstemps(testDb.data(), 3);
-    REQUIRE(dbFd >= 0);
-    close(dbFd);
-
     // 第一次运行：127.0.0.1 可达，不应产生告警
     {
         ConfigManager::Config cfg;
         cfg.filename       = testFile;
         cfg.enableDatabase = true;
-        cfg.databasePath   = testDb;
+        cfg.databasePath   = testPgConnstr();
         cfg.silentMode     = true;
         PingCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);
@@ -306,15 +304,14 @@ TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts]") {
 
     // 验证：没有告警产生
     {
-        DatabaseManager db(testDb);
-        REQUIRE(db.initialize());
-        auto alerts = db.getActiveAlerts();
+        auto db = std::make_unique<DatabaseManagerPG>(testPgConnstr());
+        REQUIRE(db->initialize());
+        auto alerts = db->getActiveAlerts();
         // 无 raw ICMP 特权时所有主机视为不可达，会正常产生告警，跳过该断言
         if (haveRawPingCapability()) {
             REQUIRE(alerts.empty());
         }
     }
 
-    std::filesystem::remove(testDb);
     std::filesystem::remove(testFile);
 }

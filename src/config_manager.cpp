@@ -70,12 +70,6 @@ void ConfigManager::applyConfigFileSettings() {
     if (configFile.has("general", "cleanup_days")) {
         config.cleanupDays = configFile.getInt("general", "cleanup_days", config.cleanupDays);
     }
-#ifdef USE_POSTGRESQL
-    if (configFile.has("general", "use_postgresql")) {
-        config.usePostgreSQL =
-            configFile.getBool("general", "use_postgresql", config.usePostgreSQL);
-    }
-#endif
 }
 
 bool ConfigManager::saveConfigFile() {
@@ -102,9 +96,6 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
     configFile.set("general", "database_path", config.databasePath);
     configFile.setBool("general", "silent", config.silentMode);
     configFile.setInt("general", "cleanup_days", config.cleanupDays);
-#ifdef USE_POSTGRESQL
-    configFile.setBool("general", "use_postgresql", config.usePostgreSQL);
-#endif
 
     return configFile.save(savePath);
 }

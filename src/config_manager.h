@@ -13,7 +13,7 @@ class ConfigManager {
     struct Config {
         std::string filename     = "";
         bool enableDatabase      = false;
-        std::string databasePath = "ping_monitor.db";
+        std::string databasePath = "host=localhost user=postgres dbname=mping";
         bool silentMode          = false;
         std::string queryIP      = "";
         int cleanupDays          = -1;  // -1表示不执行清理
@@ -22,9 +22,6 @@ class ConfigManager {
             -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
         bool loadConfigFile        = true;  // 是否加载配置文件
         std::string configFilePath = "";    // 指定的配置文件路径
-#ifdef USE_POSTGRESQL
-        bool usePostgreSQL = false;  // 是否使用PostgreSQL数据库
-#endif
     };
 
    private:

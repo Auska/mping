@@ -9,7 +9,7 @@
 
 #include "config_manager.h"
 
-class DatabaseInterface;
+class DatabaseManagerPG;
 class PingManager;
 
 /**
@@ -33,8 +33,8 @@ class Command {
     explicit Command(const ConfigManager::Config& cfg);
 
     // 根据配置和编译选项创建数据库实例
-    std::unique_ptr<DatabaseInterface> createDatabase();
-    bool initializeDatabase(DatabaseInterface& db);
+    std::unique_ptr<DatabaseManagerPG> createDatabase();
+    bool initializeDatabase(DatabaseManagerPG& db);
 };
 
 // ─── 查询 IP 统计 ────────────────────────────────────────────────────────
@@ -82,12 +82,12 @@ class PingCommand : public Command {
     int execute() override;
 
    private:
-    bool insertPingResults(DatabaseInterface* db, const std::vector<PingResult>& allResults);
-    bool processAlerts(DatabaseInterface* db, const std::vector<PingResult>& allResults,
+    bool insertPingResults(DatabaseManagerPG* db, const std::vector<PingResult>& allResults);
+    bool processAlerts(DatabaseManagerPG* db, const std::vector<PingResult>& allResults,
                        const std::unordered_set<std::string>& alertIPs);
     // 对首次不通且未告警的主机重试确认，避免瞬时故障误报告警
     bool confirmFailuresWithRetry(PingManager& pingManager, std::vector<PingResult>& allResults,
-                                  DatabaseInterface* db,
+                                  DatabaseManagerPG* db,
                                   const std::unordered_set<std::string>& alertIPs);
 };
 

@@ -5,17 +5,28 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <tuple>
 #include <vector>
 
-#include "database_base.h"
-#include "database_interface.h"
+// 单个 IP 的 ping 统计结果
+struct PingStatistics {
+    int totalRecords   = 0;
+    int successCount   = 0;
+    int failureCount   = 0;
+    int maxDelay       = 0;
+    int minDelay       = 0;
+    double avgDelay    = 0;
+    double successRate = 0;
+    double failureRate = 0;
+};
 
-// 数据库管理类，用于处理PostgreSQL数据库操作
-class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
+// PostgreSQL 数据库操作类（唯一数据库后端）
+class DatabaseManagerPG {
    private:
     std::string connInfo;
+    std::mutex dbMutex;
     // 使用智能指针管理 PGconn 连接
     struct PGconnDeleter {
         void operator()(PGconn* conn) const {
@@ -46,25 +57,27 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
     // 将旧 TIMESTAMP 列迁移为 TIMESTAMPTZ
     bool migrateSchema();
 
+    // 删除 ping_results 表中超过 days 天的旧记录；返回删除行数，失败返回 -1
+    int deleteOldPingResults(int days);
+
    public:
     // 构造函数和析构函数
     explicit DatabaseManagerPG(const std::string& connectionInfo);
     ~DatabaseManagerPG() = default;
 
     // 初始化数据库
-    bool initialize() override;
+    bool initialize();
 
     // 插入单个ping结果
     bool insertPingResult(const std::string& ip, const std::string& hostname, short delay,
-                          bool success, const std::string& timestamp) override;
+                          bool success, const std::string& timestamp);
 
     // 批量插入ping结果
     bool insertPingResults(
-        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results)
-        override;
+        const std::vector<std::tuple<std::string, std::string, short, bool, std::string>>& results);
 
     // 查询IP统计信息
-    void queryIPStatistics(const std::string& ip) override;
+    void queryIPStatistics(const std::string& ip);
 
     // 拆分后的私有查询方法
     std::string queryHostName(const std::string& ip);
@@ -72,27 +85,26 @@ class DatabaseManagerPG : public DatabaseInterface, protected DatabaseBase {
     void printRecentRecords(const std::string& ip);
 
     // 清理旧数据
-    void cleanupOldData(int days) override;
+    void cleanupOldData(int days);
 
     // 仅清理ping_results表中的旧数据
-    void cleanupOldPingResults(int days) override;
+    void cleanupOldPingResults(int days);
 
     // 获取所有主机
-    std::map<std::string, std::string> getAllHosts() override;
+    std::map<std::string, std::string> getAllHosts();
 
     // 添加告警
-    bool addAlert(const std::string& ip, const std::string& hostname) override;
+    bool addAlert(const std::string& ip, const std::string& hostname);
 
     // 移除告警
-    bool removeAlert(const std::string& ip) override;
+    bool removeAlert(const std::string& ip);
 
     // 获取活动告警
-    std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts(
-        int days = -1) override;
+    std::vector<std::tuple<std::string, std::string, std::string>> getActiveAlerts(int days = -1);
 
     // 获取恢复记录
     std::vector<std::tuple<int, std::string, std::string, std::string, std::string>>
-    getRecoveryRecords(int days = -1) override;
+    getRecoveryRecords(int days = -1);
 };
 
 #endif  // DATABASE_MANAGER_PG_H

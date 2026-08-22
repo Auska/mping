@@ -8,7 +8,42 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "statistics_printer.h"
+#include "ip_validator.h"
+
+namespace {
+
+// 统计信息与最近记录输出辅助
+void printHeader(const std::string& ip, const std::string& hostname) {
+    std::println(std::cout, "Statistics for IP: {} ({})", ip, hostname);
+    std::println(std::cout, "=========================================================");
+}
+
+void printBody(const PingStatistics& stats) {
+    std::println(std::cout, "Total ping records: {}", stats.totalRecords);
+    if (stats.totalRecords == 0) {
+        std::println(std::cout, "No ping records found for this IP.");
+        return;
+    }
+    std::println(std::cout, "Successful pings: {}", stats.successCount);
+    std::println(std::cout, "Failed pings: {}", stats.failureCount);
+    std::println(std::cout, "Success rate: {:.2f}%", stats.successRate);
+    std::println(std::cout, "Failure rate: {:.2f}%", stats.failureRate);
+    std::println(std::cout, "Average delay (successful pings): {:.2f}ms", stats.avgDelay);
+    std::println(std::cout, "Maximum delay (successful pings): {}ms", stats.maxDelay);
+    std::println(std::cout, "Minimum delay (successful pings): {}ms", stats.minDelay);
+}
+
+void printRecentRecordsHeader() {
+    std::println(std::cout, "\nRecent ping records (last 10):");
+    std::println(std::cout, "Timestamp           \tDelay\tStatus");
+    std::println(std::cout, "--------------------------------------------------------");
+}
+
+void printRecentRecordRow(const std::string& timestamp, int delay, bool success) {
+    std::println(std::cout, "{}\t{}ms\t{}", timestamp, delay, success ? "Success" : "Failed");
+}
+
+}  // namespace
 
 DatabaseManagerPG::DatabaseManagerPG(const std::string& connectionInfo)
     : connInfo(connectionInfo), conn(nullptr) {
@@ -92,6 +127,16 @@ bool DatabaseManagerPG::initialize() {
         }
         PQclear(res);
     }
+
+    // 会话统一按 UTC 解释时间戳：ping_results 的时间以 UTC 文本写入，
+    // 必须固定会话时区，否则会受服务器默认时区影响而产生偏移（与迁移逻辑一致）
+    PGresult* tzRes = PQexec(conn.get(), "SET TIME ZONE 'UTC';");
+    if (PQresultStatus(tzRes) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to set timezone to UTC: {}", PQresultErrorMessage(tzRes));
+        PQclear(tzRes);
+        return false;
+    }
+    PQclear(tzRes);
 
     // 设置连接保持活动状态
     PGresult* res = PQexec(conn.get(), "SET tcp_keepalives_idle = 60;");
@@ -238,7 +283,7 @@ bool DatabaseManagerPG::migrateSchema() {
 bool DatabaseManagerPG::insertPingResult(const std::string& ip, const std::string& hostname,
                                          short delay, bool success, const std::string& timestamp) {
     // 验证IP地址格式
-    if (!isValidIP(ip)) {
+    if (!IPValidator::isValidIPv4(ip)) {
         std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
@@ -415,7 +460,7 @@ bool DatabaseManagerPG::insertPingResults(
     // 验证所有IP地址格式
     if (success) {
         for (const auto& result : results) {
-            if (!isValidIP(std::get<0>(result))) {
+            if (!IPValidator::isValidIPv4(std::get<0>(result))) {
                 std::println(std::cerr, "Invalid IP address format: {}", std::get<0>(result));
                 success = false;
                 break;
@@ -442,10 +487,10 @@ void DatabaseManagerPG::queryIPStatistics(const std::string& ip) {
         std::println(std::cerr, "Database not initialized");
         return;
     }
-    StatisticsPrinter::printHeader(ip, queryHostName(ip));
+    printHeader(ip, queryHostName(ip));
 
     auto stats = queryStatistics(ip);
-    StatisticsPrinter::printBody(stats);
+    printBody(stats);
 
     if (stats.totalRecords > 0) {
         printRecentRecords(ip);
@@ -521,15 +566,36 @@ void DatabaseManagerPG::printRecentRecords(const std::string& ip) {
         return;
     }
 
-    StatisticsPrinter::printRecentRecordsHeader();
+    printRecentRecordsHeader();
     for (int i = 0; i < PQntuples(res); i++) {
         char* ts = PQgetvalue(res, i, 2);
         char* d  = PQgetvalue(res, i, 0);
         char* s  = PQgetvalue(res, i, 1);
-        StatisticsPrinter::printRecentRecordRow(ts ? ts : "N/A", d ? std::atoi(d) : 0,
-                                                s && std::strcmp(s, "t") == 0);
+        printRecentRecordRow(ts ? ts : "N/A", d ? std::atoi(d) : 0, s && std::strcmp(s, "t") == 0);
     }
     PQclear(res);
+}
+
+// 删除 ping_results 表中超过 days 天的旧记录；返回删除行数，失败返回 -1
+int DatabaseManagerPG::deleteOldPingResults(int days) {
+    const char* deleteSQL =
+        "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
+    std::string daysStr        = std::to_string(days);
+    const char* paramValues[1] = {daysStr.c_str()};
+    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
+    int paramFormats[1]        = {0};
+
+    PGresult* res =
+        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to delete old ping results: {}", PQresultErrorMessage(res));
+        PQclear(res);
+        return -1;
+    }
+
+    int deleted = std::atoi(PQcmdTuples(res));
+    PQclear(res);
+    return deleted;
 }
 
 void DatabaseManagerPG::cleanupOldData(int days) {
@@ -542,30 +608,20 @@ void DatabaseManagerPG::cleanupOldData(int days) {
 
     std::println(std::cout, "Cleaning up data older than {} days...", days);
 
-    // 使用参数化查询从统一的ping_results表中删除指定天数之前的数据
-    const char* deleteSQL =
-        "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
-    std::string daysStr        = std::to_string(days);
-    const char* paramValues[1] = {daysStr.c_str()};
-    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
-    int paramFormats[1]        = {0};
-
-    PGresult* deleteRes =
-        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
-        std::println(std::cerr, "Failed to delete old data: {}", PQresultErrorMessage(deleteRes));
-        PQclear(deleteRes);
+    int totalDeleted = deleteOldPingResults(days);
+    if (totalDeleted < 0) {
         return;
     }
-
-    int totalDeleted = std::atoi(PQcmdTuples(deleteRes));
-    PQclear(deleteRes);
-
     std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
 
     // 清理alerts表中超过指定天数的告警记录
     const char* cleanupAlertsSQL =
         "DELETE FROM alerts WHERE created_time < NOW() - ($1 * INTERVAL '1 day')";
+    std::string daysStr        = std::to_string(days);
+    const char* paramValues[1] = {daysStr.c_str()};
+    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
+    int paramFormats[1]        = {0};
+
     PGresult* cleanupAlertsRes = PQexecParams(conn.get(), cleanupAlertsSQL, 1, nullptr, paramValues,
                                               paramLengths, paramFormats, 0);
 
@@ -616,25 +672,10 @@ void DatabaseManagerPG::cleanupOldPingResults(int days) {
 
     std::println(std::cout, "Cleaning up ping_results older than {} days...", days);
 
-    const char* deleteSQL =
-        "DELETE FROM ping_results WHERE timestamp < NOW() - ($1 * INTERVAL '1 day')";
-    std::string daysStr        = std::to_string(days);
-    const char* paramValues[1] = {daysStr.c_str()};
-    int paramLengths[1]        = {static_cast<int>(daysStr.length())};
-    int paramFormats[1]        = {0};
-
-    PGresult* deleteRes =
-        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
-        std::println(std::cerr, "Failed to delete old ping results: {}",
-                     PQresultErrorMessage(deleteRes));
-        PQclear(deleteRes);
+    int totalDeleted = deleteOldPingResults(days);
+    if (totalDeleted < 0) {
         return;
     }
-
-    int totalDeleted = std::atoi(PQcmdTuples(deleteRes));
-    PQclear(deleteRes);
-
     std::println(std::cout, "Deleted {} old records from ping_results table", totalDeleted);
 }
 
@@ -678,7 +719,7 @@ bool DatabaseManagerPG::addAlert(const std::string& ip, const std::string& hostn
     }
 
     // 验证IP地址格式
-    if (!isValidIP(ip)) {
+    if (!IPValidator::isValidIPv4(ip)) {
         std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
@@ -723,81 +764,30 @@ bool DatabaseManagerPG::removeAlert(const std::string& ip) {
     }
 
     // 验证IP地址格式
-    if (!isValidIP(ip)) {
+    if (!IPValidator::isValidIPv4(ip)) {
         std::println(std::cerr, "Invalid IP address format: {}", ip);
         return false;
     }
 
-    // 使用参数化查询获取告警信息，用于写入恢复记录
-    const char* selectSQL      = "SELECT hostname, created_time FROM alerts WHERE ip = $1";
+    // 单条语句原子完成：删除告警并把被删告警写入恢复记录。
+    // 告警不存在时无行删除也不产生恢复记录，且中途失败不会丢失恢复数据。
+    const char* sql =
+        "WITH gone AS (DELETE FROM alerts WHERE ip = $1 RETURNING hostname, created_time) "
+        "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) "
+        "SELECT $1, hostname, created_time, NOW() FROM gone";
     const char* paramValues[1] = {ip.c_str()};
     int paramLengths[1]        = {static_cast<int>(ip.length())};
     int paramFormats[1]        = {0};
 
-    PGresult* selectRes =
-        PQexecParams(conn.get(), selectSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-    if (!selectRes || PQresultStatus(selectRes) != PGRES_TUPLES_OK) {
-        std::println(std::cerr, "Failed to query alert information for IP: {}", ip);
-        if (selectRes) PQclear(selectRes);
+    PGresult* res =
+        PQexecParams(conn.get(), sql, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
+    if (!res || PQresultStatus(res) != PGRES_COMMAND_OK) {
+        std::println(std::cerr, "Failed to remove alert for IP {}: {}", ip,
+                     res ? PQresultErrorMessage(res) : "Unknown error");
+        if (res) PQclear(res);
         return false;
     }
-
-    std::string hostname, alertTime;
-    if (PQntuples(selectRes) > 0) {
-        char* hostText = PQgetvalue(selectRes, 0, 0);
-        char* timeText = PQgetvalue(selectRes, 0, 1);
-        if (hostText) {
-            hostname = hostText;
-        }
-        if (timeText) {
-            alertTime = timeText;
-        }
-    }
-    PQclear(selectRes);
-
-    // 使用参数化查询从告警表中删除记录
-    const char* deleteSQL = "DELETE FROM alerts WHERE ip = $1";
-    PGresult* deleteRes =
-        PQexecParams(conn.get(), deleteSQL, 1, nullptr, paramValues, paramLengths, paramFormats, 0);
-
-    if (!deleteRes || PQresultStatus(deleteRes) != PGRES_COMMAND_OK) {
-        std::println(std::cerr, "Failed to remove alert for IP: {}", ip);
-        if (deleteRes) PQclear(deleteRes);
-        return false;
-    }
-    PQclear(deleteRes);
-
-    // 如果找到了告警记录，将其写入恢复记录表
-    if (!hostname.empty() && !alertTime.empty()) {
-        const char* insertRecoveryParamValues[3];
-        int insertRecoveryParamLengths[3];
-        int insertRecoveryParamFormats[3];
-
-        insertRecoveryParamValues[0]  = ip.c_str();
-        insertRecoveryParamValues[1]  = hostname.c_str();
-        insertRecoveryParamValues[2]  = alertTime.c_str();
-        insertRecoveryParamLengths[0] = static_cast<int>(ip.length());
-        insertRecoveryParamLengths[1] = static_cast<int>(hostname.length());
-        insertRecoveryParamLengths[2] = static_cast<int>(alertTime.length());
-        insertRecoveryParamFormats[0] = 0;
-        insertRecoveryParamFormats[1] = 0;
-        insertRecoveryParamFormats[2] = 0;
-
-        const char* insertRecoverySQL =
-            "INSERT INTO recovery_records (ip, hostname, alert_time, recovery_time) "
-            "VALUES ($1, $2, $3, NOW())";
-
-        PGresult* insertRes =
-            PQexecParams(conn.get(), insertRecoverySQL, 3, nullptr, insertRecoveryParamValues,
-                         insertRecoveryParamLengths, insertRecoveryParamFormats, 0);
-
-        if (!insertRes || PQresultStatus(insertRes) != PGRES_COMMAND_OK) {
-            std::println(std::cerr, "Failed to insert recovery record for IP: {}", ip);
-            if (insertRes) PQclear(insertRes);
-            return false;
-        }
-        PQclear(insertRes);
-    }
+    PQclear(res);
 
     return true;
 }

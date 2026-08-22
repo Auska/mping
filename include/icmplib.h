@@ -17,6 +17,7 @@
 #include <chrono>
 #include <climits>
 #include <cstring>
+#include <random>
 #include <regex>
 #include <string>
 
@@ -416,7 +417,8 @@ class ICMPEcho {
         ICMPRequest() = delete;
         ICMPRequest(IPAddress::Type protocol, uint16_t sequence = 1) {
             std::memset(this, 0, sizeof(ICMPEchoMessage));
-            id   = rand() % USHRT_MAX;
+            // 每次请求取独立随机 ID：避免并发进程未播种 rand() 的相同序列导致回包串线
+            id   = static_cast<uint16_t>(std::random_device{}() & 0xFFFF);
             type = (protocol != IPAddress::Type::IPv6) ? ICMPLIB_ICMP_ECHO_REQUEST
                                                        : ICMPLIB_ICMPV6_ECHO_REQUEST;
             seq  = sequence;

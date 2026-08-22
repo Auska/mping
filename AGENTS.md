@@ -3,20 +3,12 @@
 ## 快速参考
 
 ```bash
-# 配置并构建（SQLite only, Release）
+# 配置并构建（PostgreSQL 是唯一数据库后端, Release）
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-
-# 构建（含 PostgreSQL）
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_USE_POSTGRESQL=ON
 cmake --build build -j
 
 # 构建（含测试）
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON
-cmake --build build -j
-
-# 构建（含测试 + PostgreSQL）
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_BUILD_TESTS=ON -DMPING_USE_POSTGRESQL=ON
 cmake --build build -j
 
 # 运行全部测试（CTest）
@@ -55,13 +47,10 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **`main.cpp`**：精简至 ~50 行，仅负责参数解析和命令调度
 - **`utils.cpp`/`utils.h`**：文件操作等实用函数
 - **`ping_manager.cpp`/`ping_manager.h`**：核心 ping 功能实现（线程池优化）
-- **`database_manager.cpp`/`database_manager.h`**：SQLite 数据库操作
 - **`database_manager_pg.cpp`/`database_manager_pg.h`**：PostgreSQL 数据库操作
 - **`config_manager.cpp`/`config_manager.h`**：配置管理（支持 XDG 规范的配置文件）
 - **`config_file.cpp`/`config_file.h`**：INI 格式配置文件解析器（遵循 XDG 规范）
-- **`database_factory.cpp`/`database_factory.h`**：数据库工厂模式实现
-- **`database_interface.h`**：数据库抽象接口
-- **`database_base.h`**：数据库基类，提供公共逻辑和 IP 验证
+- **`ip_validator.h`**：IP 地址校验工具
 - **`version_info.cpp`/`version_info.h`**：版本信息管理
 
 ### 程序流程（main.cpp）
@@ -75,7 +64,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
   ├── [queryAlerts 启用] → 创建 QueryAlertsCommand → 查询告警 → 结束
   ├── [queryRecoveryRecords 启用] → 创建 QueryRecoveryCommand → 查询恢复 → 结束
   └── [默认] → 创建 PingCommand
-       → 确定数据库类型（DatabaseFactory，根据连接字符串自动检测）
+       → 创建 PostgreSQL 数据库实例（DatabaseManagerPG）
        → 初始化数据库（创建表结构）
        → 读取主机列表（文件或数据库 hosts 表）
        → 执行并发 ping（PingManager，线程池，最大并发数 50）
@@ -93,26 +82,18 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 - **降低复杂度**：`main()` 圈复杂度从 30 降至 5
 - **易于扩展**：添加新命令只需继承 `Command` 并实现 `execute()`
 
-### 数据库抽象层
+### 数据库层
 
 ```
-DatabaseInterface（纯虚接口，9 个虚方法）
-       ↑
-DatabaseBase（公共逻辑: IP 验证, dbMutex, 禁止拷贝/移动）
-       ↑
-  ┌────┴────────────────────┐
-  │                         │
-DatabaseManager        DatabaseManagerPG
-（SQLite, sqlite3*）    （PostgreSQL, PGconn*）
-表名: ip_x_x_x_x       表名: ping_x_x_x_x
+DatabaseManagerPG（PostgreSQL, PGconn*）
+表名: ping_x_x_x_x
+IP 校验: IPValidator（ip_validator.h）
 ```
 
-### 条件编译
+### 数据库后端
 
-代码中使用 `#ifdef USE_POSTGRESQL` / `#ifdef USE_SQLITE` 宏进行条件编译。两个宏**独立检测**，可同时定义（测试目标）以支持两种后端。添加新数据库支持时需要修改：
-
-- `database_factory.cpp`：添加新的 `DatabaseType` 枚举值和创建逻辑
-- `CMakeLists.txt`：添加编译选项、依赖查找和源文件
+PostgreSQL 是唯一数据库后端，始终编译（`find_package(PostgreSQL REQUIRED)`），数据库操作全部通过 `DatabaseManagerPG` 完成。如需新增其他后端，需重新引入抽象接口并调整 `commands.cpp` 的调用：
+- `CMakeLists.txt`：添加依赖查找和源文件
 
 ## 编程规范
 
@@ -120,12 +101,12 @@ DatabaseManager        DatabaseManagerPG
 2. **commit 必须使用英文**：提交信息应清晰描述变更内容
 3. **使用面向对象方式实现**：采用封装、继承、多态等 OOP 原则
 4. **优先使用项目中存在的函数**：避免重复造轮子，重用现有代码
-5. **遵循工厂模式**：使用 DatabaseFactory 创建数据库实例
+5. **数据库访问统一走 DatabaseManagerPG**：数据库操作集中在该类封装方法中，禁止在调用方手工拼装 SQL
 6. **使用现代 C++ 特性**：如 `std::println`、智能指针、移动语义等
 7. **线程安全**：使用互斥锁和条件变量确保线程安全
 8. **使用 Catch2 v3 进行单元测试**：测试框架使用 Catch2 v3
 9. **代码格式化**：使用 clang-format 保持代码风格一致（Google 风格基础）
-10. **PostgreSQL 时间列必须使用 TIMESTAMPTZ**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区）。`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换。新增迁移逻辑时，需在 `migrateSchema()` 中处理列类型转换
+10. **PostgreSQL 时间列必须使用 TIMESTAMPTZ**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区）。`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换。连接建立后必须在 `initialize()` 中执行 `SET TIME ZONE 'UTC'`（会话级），确保写入的 UTC 文本时间戳按 UTC 解释，不受服务器默认时区影响。新增迁移逻辑时，需在 `migrateSchema()` 中处理列类型转换
 
 ### 代码格式化规范
 
@@ -161,7 +142,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - **`find_package()` 集中到文件顶部**：依赖查找统一声明，不分散到分支内部
 - **target 属性使用 `target_*()` 命令**：使用 `target_include_directories` / `target_compile_definitions` / `target_link_libraries`，避免全局 `include_directories()` / `add_definitions()`
 - **缩进 4 空格**：无 Tab
-- **选项使用 `option()`**：`MPING_USE_POSTGRESQL` / `MPING_BUILD_TESTS` 通过 `-D` 传递
+- **选项使用 `option()`**：`MPING_BUILD_TESTS` 通过 `-D` 传递
 - **仅支持 POSIX 平台**：Windows 不支持，CMake 配置阶段用 `if(WIN32)` 直接拒绝；其余平台条件使用 `if(UNIX)`，避免手动检测编译器
 
 ## 项目特性
@@ -169,7 +150,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - 并发 ping 多个主机以获得更快的结果（默认最大并发数 50）
 - 从文件读取 IP 地址和主机名
 - 显示所有主机的状态和响应时间
-- 支持 SQLite 或 PostgreSQL 数据库日志记录
+- 支持 PostgreSQL 数据库日志记录
 - 为特定 IP 地址查询统计信息
 - 可配置的 ping 操作超时时间（默认 3 秒）
 - 可配置的 ping 包数量（默认 3 个包）
@@ -189,10 +170,9 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 
 - **CMake**：使用 CMake（>= 3.16）作为构建系统
 - **C++23 标准**（必需）
-- **依赖管理**：通过 `find_package` 查找系统开发库（SQLite3、libpq、Catch2、Threads）
+- **依赖管理**：通过 `find_package` 查找系统开发库（libpq、Catch2、Threads）
 - **支持构建类型**：Release（默认）和 Debug
 - **编译选项**（通过 `-D` 传递）：
-  - `MPING_USE_POSTGRESQL=ON`：启用 PostgreSQL 支持
   - `MPING_BUILD_TESTS=ON`：编译测试程序
   - `-DCMAKE_BUILD_TYPE=Debug`：调试版本构建
 - **安装支持**：支持通过 `cmake --install` 安装到系统
@@ -200,12 +180,8 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 ### 构建命令
 
 ```bash
-# 仅启用 SQLite（默认）
+# 配置并构建（PostgreSQL 是唯一数据库后端）
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-
-# 启用 PostgreSQL 支持
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMPING_USE_POSTGRESQL=ON
 cmake --build build -j
 
 # 调试版本构建
@@ -227,20 +203,20 @@ sudo cmake --install build
 - **C++23 兼容编译器**（GCC 13+ 或 Clang 16+；不支持 MSVC/Windows）
 - **CMake 3.16+**
 - **线程库**（pthread，系统内置）
-- SQLite3、libpq、Catch2 开发库（通过系统包管理器安装）
+- libpq（PostgreSQL）、Catch2 开发库（通过系统包管理器安装）
 
 第三方依赖通过 `find_package` 查找系统安装的开发库，CMakeLists.txt 中使用 imported target 进行链接：
 
 ```cmake
-find_package(SQLite3 REQUIRED)
-target_link_libraries(mping PRIVATE SQLite::SQLite3)
+find_package(PostgreSQL REQUIRED)
+target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 ```
 
 ## 命令行选项
 
 - `-h`, `--help`: 显示帮助信息
 - `-v`, `--version`: 显示版本信息
-- `-d`, `--database`: 启用数据库日志记录并指定数据库路径/连接字符串
+- `-d`, `--database`: 启用数据库日志记录并指定 PostgreSQL 连接字符串
 - `-f`, `--file`: 指定包含主机的输入文件（默认：ip.txt）
 - `-q`, `--query`: 查询特定 IP 地址的统计信息（需要 -d）
 - `-a`, `--alerts [n]`: 查询活动告警（需要 -d，n: 天数，默认：全部）
@@ -251,7 +227,7 @@ target_link_libraries(mping PRIVATE SQLite::SQLite3)
 - `-N`, `--no-config`: 不加载配置文件
 - `-S`, `--save-config [path]`: 保存当前配置到文件（默认：XDG 配置目录）
 
-> **注意**：PostgreSQL 支持通过连接字符串自动检测。当数据库路径包含 `host=` 时，将自动识别为 PostgreSQL 连接字符串。
+> **注意**：`-d` 参数必须是 PostgreSQL 连接字符串（libpq 格式），如 `host=localhost user=myuser dbname=mydb`。
 
 ## 文件格式
 
@@ -285,8 +261,8 @@ mping 支持遵循 XDG 规范的配置文件，使用 INI 格式。
 # 启用数据库日志记录
 database = true
 
-# 数据库路径
-database_path = "/path/to/database.db"
+# PostgreSQL 连接字符串
+database_path = "host=localhost user=myuser dbname=mydb"
 
 # 静默模式
 silent = false
@@ -336,16 +312,14 @@ mping -S /path/to/config.conf
 
 - **`tests/test_main.cpp`**：测试入口，定义 `CATCH_CONFIG_MAIN`
 - **`tests/test_commands.cpp`**：命令模式测试（所有 5 个命令）
-- **`tests/test_database_manager.cpp`**：数据库管理器功能测试（含告警生命周期、并发访问）
+- **`tests/test_database_manager.cpp`**：数据库管理器与 IP 校验测试（连接/初始化行为）
 - **`tests/test_ping_manager.cpp`**：Ping 管理器功能测试
 - **`tests/test_utils.cpp`**：工具函数测试
 - **`tests/test_config_manager.cpp`**：配置管理器测试（13 个测试用例）
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **56 个测试用例**，**518 个断言**。
-
-> **注意**：启用 PostgreSQL 时，测试程序会同时链接 SQLite 和 PostgreSQL 数据库管理器，以便进行跨数据库测试。`database_factory.cpp` 使用独立检测的 `USE_SQLITE` / `USE_POSTGRESQL` 宏，两个后端可同时编译。
+当前共 **43 个测试用例**。其中 6 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **333 个断言**。
 
 ### 运行测试
 
@@ -356,6 +330,9 @@ cmake --build build -j
 
 # 运行所有测试（CTest）
 ctest --test-dir build
+
+# 运行含数据库命令的完整测试（需可用 PostgreSQL；6 个用例不可达时自动跳过）
+MPING_TEST_PG_CONNSTR='host=localhost user=postgres dbname=postgres' ctest --test-dir build
 
 # 运行特定测试（使用 Catch2 过滤器）
 ./build/mping_tests "[test_case_name]"
@@ -374,32 +351,22 @@ ctest --test-dir build
 - **错误处理**：全面的异常处理和错误报告机制
 - **资源管理**：使用智能指针进行自动内存管理
 - **配置管理**：通过 ConfigManager 处理命令行参数和配置
-- **数据库抽象**：通过 DatabaseInterface 抽象不同数据库后端
-- **数据库基类**：通过 DatabaseBase 提供公共逻辑（如 IP 验证）
+- **数据库访问**：全部通过 DatabaseManagerPG 封装（连接、建表、事务、参数化查询）；IP 校验用 IPValidator
 - **现代 C++ 特性**：使用 C++23 标准的新特性，如 `std::println` 用于格式化输出
-- **时间处理**：所有时间戳都使用 UTC 时间以确保跨时区的一致性
-- **PostgreSQL 时间列**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区），`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换
-- **工厂模式**：使用 DatabaseFactory 根据连接字符串自动检测数据库类型
+- **时间处理**：所有时间戳都使用 UTC 时间以确保跨时区的一致性；本地时间戳生成使用 `gmtime_r`（线程安全）
+- **PostgreSQL 时间列**：所有 PostgreSQL 表的时间列默认使用 `TIMESTAMPTZ` 类型，禁止使用 `TIMESTAMP`（不带时区），`TIMESTAMPTZ` 原生以 UTC 存储，无需手动 `AT TIME ZONE 'UTC'` 转换；会话须 `SET TIME ZONE 'UTC'`（见 `initialize()`）
 - **线程安全**：使用互斥锁（`std::mutex`）和条件变量（`std::condition_variable`）确保线程安全
 - **测试驱动开发**：使用 Catch2 框架编写和运行单元测试
 
 ## 数据库连接字符串格式
 
-### SQLite
-
-```
-/path/to/database.db
-```
-
-### PostgreSQL
+PostgreSQL（libpq 连接字符串，唯一支持的数据库）：
 
 ```
 host=localhost user=myuser password=mypass dbname=mydb
 ```
 
-> **自动检测**：程序会自动根据连接字符串判断数据库类型。如果路径包含 `host=` 关键字，则识别为 PostgreSQL 连接。
-
-### PostgreSQL 可选参数
+### 可选参数
 
 - `client_min_messages=warning`：抑制 NOTICE 消息
 - `port=5432`：指定端口
