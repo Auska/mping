@@ -128,30 +128,14 @@ bool ConfigManager::parseArguments(int argc, char* argv[], int* exitCode) {
         return false;
     };
 
-    // 定义长选项
-    const struct option long_options[] = {{"help", no_argument, nullptr, 'h'},
-                                          {"database", required_argument, nullptr, 'd'},
-                                          {"file", required_argument, nullptr, 'f'},
-                                          {"query", required_argument, nullptr, 'q'},
-                                          {"alerts", optional_argument, nullptr, 'a'},
-                                          {"recovery", optional_argument, nullptr, 'r'},
-                                          {"silent", no_argument, nullptr, 's'},
-                                          {"cleanup", optional_argument, nullptr, 'C'},
-                                          {"version", no_argument, nullptr, 'v'},
-                                          {"config", required_argument, nullptr, 'c'},
-                                          {"no-config", no_argument, nullptr, 'N'},
-                                          {"save-config", optional_argument, nullptr, 'S'},
-                                          {nullptr, 0, nullptr, 0}};
-
-    // 解析命令行参数
+    // 解析命令行参数（仅短选项）
     int opt;
     // optional_argument 的空格分隔形式（如 "-C 30"）不会被 getopt 消费：
     // 记录哪些选项处于"已启用但未带参"状态，稍后消费数字位置参数作为天数
     bool cleanupBare  = false;
     bool alertsBare   = false;
     bool recoveryBare = false;
-    while ((opt = getopt_long(argc, argv, "hd:f:q:a::r::sC::vc:NS::", long_options, nullptr))
-           != -1) {
+    while ((opt = getopt(argc, argv, "hd:f:q:a::r::sC::vc:NS::")) != -1) {
         switch (opt) {
             case '?':
                 // 未知选项或缺必需参数：getopt 已打印原因，给出提示并以错误码退出
@@ -266,24 +250,21 @@ const ConfigManager::Config& ConfigManager::getConfig() const {
 
 void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "Usage: {} [options] [filename]", programName);
-    std::println(std::cout, "Options:");
-    std::println(std::cout, "  -h, --help\t\tShow this help message");
-    std::println(std::cout, "  -v, --version\t\tShow version information");
-    std::println(std::cout, "  -d, --database\tEnable database logging and specify database path");
-    std::println(std::cout, "  -f, --file\t\tSpecify input file with hosts (default: ip.txt)");
+    std::println(std::cout, "Options (short only):");
+    std::println(std::cout, "  -h\t\tShow this help message");
+    std::println(std::cout, "  -v\t\tShow version information");
+    std::println(std::cout, "  -d <connstr>\tEnable database logging and specify database path");
+    std::println(std::cout, "  -f <file>\tSpecify input file with hosts (default: ip.txt)");
+    std::println(std::cout, "  -q <ip>\tQuery statistics for a specific IP address (requires -d)");
+    std::println(std::cout, "  -a [n]\t\tQuery active alerts (requires -d, n: days, default: all)");
     std::println(std::cout,
-                 "  -q, --query\t\tQuery statistics for a specific IP address (requires -d)");
+                 "  -r [n]\t\tQuery recovery records (requires -d, n: days, default: all)");
     std::println(std::cout,
-                 "  -a, --alerts [n]\tQuery active alerts (requires -d, n: days, default: all)");
-    std::println(std::cout,
-                 "  -r, --recovery [n]\tQuery recovery records (requires -d, n: days, default: "
-                 "all)");
-    std::println(std::cout,
-                 "  -C, --cleanup [n]\tClean up data older than n days (requires -d, default: 30)");
-    std::println(std::cout, "  -s, --silent\t\tSilent mode, suppress output");
-    std::println(std::cout, "  -c, --config <path>\tLoad configuration from specified file");
-    std::println(std::cout, "  -N, --no-config\tDo not load configuration file");
-    std::println(std::cout, "  -S, --save-config [path]\tSave current configuration to file");
+                 "  -C [n]\t\tClean up data older than n days (requires -d, default: 30)");
+    std::println(std::cout, "  -s\t\tSilent mode, suppress output");
+    std::println(std::cout, "  -c <path>\tLoad configuration from specified file");
+    std::println(std::cout, "  -N\t\tDo not load configuration file");
+    std::println(std::cout, "  -S [path]\tSave current configuration to file");
     std::println(std::cout, "");
     std::println(std::cout, "Configuration File (XDG compliant):");
     std::println(std::cout, "  Default search paths (in order):");

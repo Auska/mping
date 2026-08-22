@@ -220,20 +220,20 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 
 ## 命令行选项
 
-- `-h`, `--help`: 显示帮助信息
-- `-v`, `--version`: 显示版本信息
-- `-d`, `--database`: 启用数据库日志记录并指定 PostgreSQL 连接字符串
-- `-f`, `--file`: 指定包含主机的输入文件（默认：ip.txt）
-- `-q`, `--query`: 查询特定 IP 地址的统计信息（需要 -d）
-- `-a`, `--alerts [n]`: 查询活动告警（需要 -d，n: 天数，默认：全部）
-- `-r`, `--recovery [n]`: 查询恢复记录（需要 -d，n: 天数，默认：全部）
-- `-C`, `--cleanup [n]`: 清理 n 天前的数据（需要 -d，默认：30 天）
-- `-s`, `--silent`: 静默模式，抑制输出
-- `-c`, `--config <path>`: 从指定路径加载配置文件
-- `-N`, `--no-config`: 不加载配置文件
-- `-S`, `--save-config [path]`: 保存当前配置到文件（默认：XDG 配置目录）
+> **仅支持短选项**：`-h`/`-v`/`-d`/`-f`/`-q`/`-a`/`-r`/`-C`/`-s`/`-c`/`-N`/`-S`，不支持长选项（如 `--help`）。可选参数（`-a`/`-r`/`-C` 的天数和 `-S` 的路径）支持附加形式（`-C60`）与空格分隔形式（`-C 60`）；非数字位置参数按文件名处理
 
-> **可选参数形式**：`-a`/`-r`/`-C` 的天数与 `-S` 的路径既支持附加形式（`-C60`、`--cleanup=60`），也支持空格分隔形式（`-C 60`、`--cleanup 60`）；非数字位置参数仍按文件名处理
+- `-h`: 显示帮助信息
+- `-v`: 显示版本信息
+- `-d <connstr>`: 启用数据库日志记录并指定 PostgreSQL 连接字符串
+- `-f <file>`: 指定包含主机的输入文件（默认：ip.txt）
+- `-q <ip>`: 查询特定 IP 地址的统计信息（需要 -d）
+- `-a [n]`: 查询活动告警（需要 -d，n: 天数，默认：全部）
+- `-r [n]`: 查询恢复记录（需要 -d，n: 天数，默认：全部）
+- `-C [n]`: 清理 n 天前的数据（需要 -d，默认：30 天）
+- `-s`: 静默模式，抑制输出
+- `-c <path>`: 从指定路径加载配置文件
+- `-N`: 不加载配置文件
+- `-S [path]`: 保存当前配置到文件（默认：XDG 配置目录）
 
 > **注意**：`-d` 参数必须是 PostgreSQL 连接字符串（libpq 格式），如 `host=localhost user=myuser dbname=mydb`。
 
@@ -284,7 +284,7 @@ cleanup_days = 30
 
 ### 保存配置
 
-使用 `-S` 或 `--save-config` 选项保存当前配置：
+使用 `-S` 选项保存当前配置：
 
 ```bash
 # 保存到默认路径（$XDG_CONFIG_HOME/mping/config）
@@ -306,7 +306,7 @@ mping -S /path/to/config.conf
 
 ### 数据清理
 
-`-C` / `--cleanup` 命令清理以下表中的旧数据：
+`-C` 命令清理以下表中的旧数据：
 
 - **`ping_results`**：删除超过指定天数的记录（整日早于截止期的分区直接 DROP，瞬时释放磁盘；边界日内过期行用 DELETE 精确删除）
 - **`alerts`**：删除超过指定天数的告警记录
@@ -329,7 +329,7 @@ mping -S /path/to/config.conf
 - **`tests/test_version_info.cpp`**：版本信息测试
 - **`tests/test_config_file.cpp`**：配置文件解析器测试（含原子写入验证）
 
-当前共 **45 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **352 个断言**。
+当前共 **45 个测试用例**。其中 7 个数据库命令测试依赖真实 PostgreSQL 服务：通过环境变量 `MPING_TEST_PG_CONNSTR` 指定连接串（默认 `host=localhost user=postgres dbname=postgres`），服务不可达时自动跳过（SKIP），不影响其余测试。数据库命令测试全部启用时共 **333 个断言**。
 
 退出码约定：`-h`/`-v`/`-S` 正常完成返回 0；未知选项、缺少必需参数、非法的 `-a`/`-r`/`-C` 天数等参数错误返回 1；命令执行失败（如主机文件不存在、数据库初始化失败）返回 1。
 

@@ -32,15 +32,18 @@ The project follows a command-pattern architecture with modular design:
 
 ### Options
 
-- `-h`, `--help`: Show help message
-- `-d`, `--database`: Enable database logging and specify PostgreSQL connection string (libpq format)
-- `-f`, `--file`: Specify input file with hosts (default: ip.txt)
-- `-q`, `--query`: Query statistics for a specific IP address (requires -d)
-- `-a`, `--alerts [n]`: Query active alerts (requires -d, n: days, default: all)
-- `-r`, `--recovery [n]`: Query recovery records (requires -d, n: days, default: all)
-- `-C`, `--cleanup [n]`: Clean up data older than n days (requires -d, default: 30)
-- `-s`, `--silent`: Silent mode, suppress output
-- `-v`, `--version`: Show version information
+- `-h`: Show help message
+- `-v`: Show version information
+- `-d <connstr>`: Enable database logging and specify PostgreSQL connection string (libpq format)
+- `-f <file>`: Specify input file with hosts (default: ip.txt)
+- `-q <ip>`: Query statistics for a specific IP address (requires -d)
+- `-a [n]`: Query active alerts (requires -d, n: days, default: all)
+- `-r [n]`: Query recovery records (requires -d, n: days, default: all)
+- `-C [n]`: Clean up data older than n days (requires -d, default: 30)
+- `-s`: Silent mode, suppress output
+- `-c <path>`: Load configuration from specified file
+- `-N`: Do not load configuration file
+- `-S [path]`: Save current configuration to file (default: XDG config dir)
 
 ### Default behavior
 

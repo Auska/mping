@@ -63,13 +63,6 @@ TEST_CASE("ConfigManager help option", "[config]") {
         auto argv = Argv({"mping", "-h"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
     }
-
-    SECTION("--help option") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--help"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
-    }
 }
 
 TEST_CASE("ConfigManager version option", "[config]") {
@@ -77,13 +70,6 @@ TEST_CASE("ConfigManager version option", "[config]") {
         reset_getopt();
         ConfigManager configManager;
         auto argv = Argv({"mping", "-v"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
-    }
-
-    SECTION("--version option") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--version"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
     }
 }
@@ -98,16 +84,6 @@ TEST_CASE("ConfigManager database option", "[config]") {
         REQUIRE(config.enableDatabase == true);
         REQUIRE(config.databasePath == "/path/to/db.db");
     }
-
-    SECTION("--database option") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--database", "test.db"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
-        REQUIRE(config.databasePath == "test.db");
-    }
 }
 
 TEST_CASE("ConfigManager file option", "[config]") {
@@ -119,15 +95,6 @@ TEST_CASE("ConfigManager file option", "[config]") {
         const auto& config = configManager.getConfig();
         REQUIRE(config.filename == "hosts.txt");
     }
-
-    SECTION("--file option") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--file", "my_ips.txt"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.filename == "my_ips.txt");
-    }
 }
 
 TEST_CASE("ConfigManager query option", "[config]") {
@@ -138,15 +105,6 @@ TEST_CASE("ConfigManager query option", "[config]") {
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.queryIP == "192.168.1.1");
-    }
-
-    SECTION("--query option") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--query", "10.0.0.1"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.queryIP == "10.0.0.1");
     }
 }
 
@@ -187,15 +145,6 @@ TEST_CASE("ConfigManager alerts option", "[config]") {
         const auto& config = configManager.getConfig();
         REQUIRE(config.queryAlerts == 7);
         REQUIRE(config.filename == "extra.txt");
-    }
-
-    SECTION("--alerts option with days") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--alerts=30"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.queryAlerts == 30);
     }
 
     SECTION("-a option with invalid days (negative)") {
@@ -242,15 +191,6 @@ TEST_CASE("ConfigManager recovery option", "[config]") {
         REQUIRE(config.filename == "");
     }
 
-    SECTION("--recovery option with days") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--recovery=60"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.queryRecoveryRecords == 60);
-    }
-
     SECTION("-r option with invalid days (negative)") {
         reset_getopt();
         ConfigManager configManager;
@@ -271,15 +211,6 @@ TEST_CASE("ConfigManager silent option", "[config]") {
         reset_getopt();
         ConfigManager configManager;
         auto argv = Argv({"mping", "-s"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.silentMode == true);
-    }
-
-    SECTION("--silent option") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--silent"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
         REQUIRE(config.silentMode == true);
@@ -315,17 +246,6 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         const auto& config = configManager.getConfig();
         REQUIRE(config.enableDatabase == true);
         REQUIRE(config.cleanupDays == 90);
-        REQUIRE(config.filename == "");
-    }
-
-    SECTION("--cleanup option with space-separated days") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "--cleanup", "15"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
-        REQUIRE(config.cleanupDays == 15);
         REQUIRE(config.filename == "");
     }
 
