@@ -64,7 +64,8 @@ void ConfigManager::applyConfigFileSettings() {
     // 从配置文件中读取设置（如果存在）
     // 注意：database 开关仅由 CLI -d 选项控制，配置文件不读取 database 键
     if (configFile.has("general", "database_path")) {
-        config.databasePath = configFile.get("general", "database_path", config.databasePath);
+        config.databasePath    = configFile.get("general", "database_path", config.databasePath);
+        config.databasePathSet = true;
     }
     if (configFile.has("general", "silent")) {
         config.silentMode = configFile.getBool("general", "silent", config.silentMode);

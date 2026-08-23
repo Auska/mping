@@ -177,7 +177,7 @@ bool PingCommand::loadHosts(std::unique_ptr<DatabaseManagerPG>& db,
     // 主机来源优先级：-f 文件 > 数据库 hosts 表 > 默认 ip.txt
     if (!config.filename.empty()) {
         hosts = readHostsFromFile(config.filename);
-    } else if (config.enableDatabase) {
+    } else if (useDatabase()) {
         db = createDatabase();
         if (!initializeDatabase(*db)) {
             return false;
@@ -246,7 +246,7 @@ int PingCommand::execute() {
         }
 
         // 2. 数据库模式：查询当前告警状态（每轮刷新，告警新增/恢复判定依赖最新状态）
-        if (config.enableDatabase) {
+        if (useDatabase()) {
             if (!db) {
                 db = createDatabase();
                 if (!initializeDatabase(*db)) {
@@ -264,7 +264,7 @@ int PingCommand::execute() {
             pingManager.checkHosts(hosts, ConfigDefaults::DOWN_CONFIRM_WINDOW);
 
         // 4. 落库、告警处理与自动清理（仅数据库模式）
-        if (config.enableDatabase) {
+        if (useDatabase()) {
             if (!persistResults(allResults, db, alertIPs)) {
                 return 1;
             }

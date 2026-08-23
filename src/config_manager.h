@@ -14,6 +14,7 @@ class ConfigManager {
         std::string filename     = "";
         bool enableDatabase      = false;
         std::string databasePath = "host=localhost user=postgres dbname=mping_pgtest";
+        bool databasePathSet     = false;  // database_path 来自 -d 或配置文件（区分默认值）
         bool silentMode          = false;
         std::string queryIP      = "";
         int cleanupDays          = -1;  // -1表示不执行清理

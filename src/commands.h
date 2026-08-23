@@ -91,6 +91,10 @@ class PingCommand : public Command {
                         const std::unordered_set<std::string>& alertIPs);
     // 打印结果（静默模式跳过）
     void printResults(const std::vector<PingResult>& allResults);
+    // 数据库是否启用：-d 开关，或持续模式下配置文件提供了 database_path（单次运行仍遵守 -d）
+    bool useDatabase() const {
+        return config.enableDatabase || (config.checkIntervalSeconds > 0 && config.databasePathSet);
+    }
     bool insertPingResults(DatabaseManagerPG* db, const std::vector<PingResult>& allResults);
     bool processAlerts(DatabaseManagerPG* db, const std::vector<PingResult>& allResults,
                        const std::unordered_set<std::string>& alertIPs);
