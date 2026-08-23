@@ -45,11 +45,11 @@ struct Argv {
 
 TEST_CASE("ConfigManager default values", "[config]") {
     SECTION("Default configuration values") {
-        ConfigManager configManager(false);  // 禁用配置文件加载
+        ConfigManager configManager;
         const auto& config = configManager.getConfig();
 
         REQUIRE(config.filename == "");
-        REQUIRE(config.enableDatabase == false);
+        REQUIRE(config.databasePathSet == false);
         REQUIRE(config.databasePath == "host=localhost user=postgres dbname=mping_pgtest");
         REQUIRE(config.silentMode == false);
         REQUIRE(config.queryIP == "");
@@ -117,14 +117,34 @@ TEST_CASE("ConfigManager version option", "[config]") {
 }
 
 TEST_CASE("ConfigManager database option", "[config]") {
-    SECTION("-d option with path") {
+    SECTION("database_path from config file enables database") {
+        std::string testPath = "/tmp/test_dbpath_XXXXXX.conf";
+        int fd               = mkstemps(testPath.data(), 5);
+        REQUIRE(fd >= 0);
+        close(fd);
+
+        std::ofstream file(testPath);
+        file << "[general]\ndatabase_path = \"host=localhost user=postgres\"\n";
+        file.close();
+
         reset_getopt();
         ConfigManager configManager;
-        auto argv = Argv({"mping", "-d", "/path/to/db.db"});
+        auto argv = Argv({"mping", "-c", testPath.c_str()});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
-        REQUIRE(config.databasePath == "/path/to/db.db");
+        REQUIRE(config.databasePathSet == true);
+        REQUIRE(config.databasePath == "host=localhost user=postgres");
+
+        std::filesystem::remove(testPath);
+    }
+
+    SECTION("absent database_path keeps database disabled (no -d CLI option)") {
+        reset_getopt();
+        ConfigManager configManager;
+        auto argv = Argv({"mping"});
+        // 无参数时直接打印帮助（返回 false），不涉及数据库
+        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
+        REQUIRE(configManager.getConfig().databasePathSet == false);
     }
 }
 
@@ -268,7 +288,6 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         auto argv = Argv({"mping", "-C"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
         REQUIRE(config.cleanupDays == 30);
     }
 
@@ -278,7 +297,6 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         auto argv = Argv({"mping", "-C90"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
         REQUIRE(config.cleanupDays == 90);
     }
 
@@ -289,7 +307,6 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         auto argv = Argv({"mping", "-C", "90"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
         REQUIRE(config.cleanupDays == 30);  // 默认 30 天
         REQUIRE(config.filename == "90");
     }
@@ -300,7 +317,6 @@ TEST_CASE("ConfigManager cleanup option", "[config]") {
         auto argv = Argv({"mping", "-C", "my_hosts.txt"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
         REQUIRE(config.cleanupDays == 30);  // 默认 30 天
         REQUIRE(config.filename == "my_hosts.txt");
     }
@@ -327,27 +343,27 @@ TEST_CASE("ConfigManager positional argument", "[config]") {
 }
 
 TEST_CASE("ConfigManager multiple options", "[config]") {
-    SECTION("Multiple valid options") {
-        reset_getopt();
-        ConfigManager configManager;
-        auto argv = Argv({"mping", "-d", "test.db", "-s"});
-        REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
-        const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
-        REQUIRE(config.databasePath == "test.db");
-        REQUIRE(config.silentMode == true);
-    }
+    SECTION("Config file database_path plus -s") {
+        std::string testPath = "/tmp/test_multi_XXXXXX.conf";
+        int fd               = mkstemps(testPath.data(), 5);
+        REQUIRE(fd >= 0);
+        close(fd);
 
-    SECTION("All options combined") {
+        std::ofstream file(testPath);
+        file << "[general]\ndatabase_path = \"monitor.db\"\n";
+        file.close();
+
         reset_getopt();
         ConfigManager configManager;
-        auto argv = Argv({"mping", "-d", "monitor.db", "-f", "hosts.txt", "-s"});
+        auto argv = Argv({"mping", "-c", testPath.c_str(), "-s"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == true);
         const auto& config = configManager.getConfig();
-        REQUIRE(config.enableDatabase == true);
+        REQUIRE(config.databasePathSet == true);
         REQUIRE(config.databasePath == "monitor.db");
-        REQUIRE(config.filename == "hosts.txt");
+        REQUIRE(config.filename == "");
         REQUIRE(config.silentMode == true);
+
+        std::filesystem::remove(testPath);
     }
 }
 
@@ -369,7 +385,7 @@ TEST_CASE("ConfigManager invalid arguments", "[config]") {
     SECTION("Missing required argument is rejected") {
         reset_getopt();
         ConfigManager configManager;
-        auto argv = Argv({"mping", "-d"});
+        auto argv = Argv({"mping", "-f"});
         REQUIRE(configManager.parseArguments(argv.size(), argv.data()) == false);
     }
 }

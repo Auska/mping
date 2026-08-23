@@ -221,22 +221,20 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 
 ## 命令行选项
 
-> **仅支持短选项**：`-h`/`-v`/`-d`/`-f`/`-q`/`-a`/`-r`/`-C`/`-s`/`-c`/`-N`/`-S`，不支持长选项（如 `--help`）。`-a`/`-r`/`-C` 的天数**仅支持附加形式**（如 `-C60`）；`-S` 的路径支持附加与空格分隔两种形式；剩余位置参数按文件名处理
+> **仅支持短选项**：`-h`/`-v`/`-f`/`-q`/`-a`/`-r`/`-C`/`-s`/`-c`/`-S`，不支持长选项（如 `--help`）。`-a`/`-r`/`-C` 的天数**仅支持附加形式**（如 `-C60`）；`-S` 的路径支持附加与空格分隔两种形式；剩余位置参数按文件名处理。数据库**只通过配置文件** `database_path` 配置（无 CLI 数据库选项）
 
 - `-h`: 显示帮助信息
 - `-v`: 显示版本信息
-- `-d <connstr>`: 启用数据库日志记录并指定 PostgreSQL 连接字符串
 - `-f <file>`: 指定包含主机的输入文件（默认：ip.txt）
-- `-q <ip>`: 查询特定 IP 地址的统计信息（需要 -d）
-- `-a [n]`: 查询活动告警（需要 -d，n: 天数，默认：全部）
-- `-r [n]`: 查询恢复记录（需要 -d，n: 天数，默认：全部）
-- `-C [n]`: 清理 n 天前的数据（需要 -d，默认：30 天）
+- `-q <ip>`: 查询特定 IP 地址的统计信息（需要配置文件 `database_path`）
+- `-a [n]`: 查询活动告警（需要配置文件 `database_path`，n: 天数，默认：全部）
+- `-r [n]`: 查询恢复记录（需要配置文件 `database_path`，n: 天数，默认：全部）
+- `-C [n]`: 清理 n 天前的数据（需要配置文件 `database_path`，默认：30 天）
 - `-s`: 静默模式，抑制输出
 - `-c <path>`: 从指定路径加载配置文件
-- `-N`: 不加载配置文件
 - `-S [path]`: 保存当前配置到文件（默认：`$HOME/.config/mping/config.ini`）
 
-> **注意**：`-d` 参数必须是 PostgreSQL 连接字符串（libpq 格式），如 `host=localhost user=myuser dbname=mydb`。
+> **注意**：数据库通过配置文件 `database_path`（libpq 连接字符串格式）配置，如 `host=localhost user=myuser dbname=mydb`；未配置时数据库功能（查询/告警/清理/落库/DB 主机列表）不可用，ping 仅使用文件模式。
 
 ## 文件格式
 
@@ -275,7 +273,7 @@ check_interval = 60
 
 命令行选项的优先级高于配置文件。配置文件中的设置会被命令行选项覆盖。
 
-> **注意**：`database` 开关仅由 CLI `-d` 选项控制，配置文件不读取 `database` 键；`database_path`/`silent`/`cleanup_days`/`check_interval` 之外的其他键会被忽略。
+> **注意**：数据库仅通过配置文件 `database_path` 键启用（CLI 无数据库选项）；`database_path`/`silent`/`cleanup_days`/`check_interval` 之外的其他键会被忽略。
 
 ### 保存配置
 

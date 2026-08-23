@@ -32,12 +32,10 @@ bool parseOptionalDays(const char* optarg, const char* optionName, int& value, i
 
 }  // namespace
 
-ConfigManager::ConfigManager(bool loadConfig) {
-    // 根据参数决定是否加载配置文件
-    config.loadConfigFile = loadConfig;
-    if (config.loadConfigFile) {
-        loadConfigFile();
-    }
+ConfigManager::ConfigManager() {
+    // 数据库通过配置文件 database_path 配置；优先使用 -c 指定路径（解析时重新加载），
+    // 否则加载默认路径（$HOME/.config/mping/config.ini）
+    loadConfigFile();
 }
 
 bool ConfigManager::loadConfigFile() {
@@ -61,8 +59,7 @@ bool ConfigManager::loadConfigFile() {
 }
 
 void ConfigManager::applyConfigFileSettings() {
-    // 从配置文件中读取设置（如果存在）
-    // 注意：database 开关仅由 CLI -d 选项控制，配置文件不读取 database 键
+    // 从配置文件中读取设置（如果存在）；database_path 存在即启用数据库
     if (configFile.has("general", "database_path")) {
         config.databasePath    = configFile.get("general", "database_path", config.databasePath);
         config.databasePathSet = true;
@@ -101,7 +98,7 @@ bool ConfigManager::saveConfigFile(const std::string& path) {
         }
     }
 
-    // 将当前配置写入配置文件（database 开关仅由 CLI -d 控制，不落盘）
+    // 将当前配置写入配置文件
     configFile.set("general", "database_path", config.databasePath);
     configFile.setBool("general", "silent", config.silentMode);
     configFile.setInt("general", "cleanup_days", config.cleanupDays);
@@ -127,7 +124,7 @@ bool ConfigManager::parseArguments(int argc, char* argv[], int* exitCode) {
 
     // 解析命令行参数（仅短选项；-a/-r/-C 的天数仅支持附加形式，如 -C90）
     int opt;
-    while ((opt = getopt(argc, argv, "hd:f:q:a::r::sC::vc:NS::")) != -1) {
+    while ((opt = getopt(argc, argv, "hf:q:a::r::sC::vc:S::")) != -1) {
         switch (opt) {
             case '?':
                 // 未知选项或缺必需参数：getopt 已打印原因，给出提示并以错误码退出
@@ -139,10 +136,6 @@ bool ConfigManager::parseArguments(int argc, char* argv[], int* exitCode) {
             case 'v':
                 print_version_info();
                 return false;
-            case 'd':
-                config.enableDatabase = true;
-                config.databasePath   = optarg;
-                break;
             case 'f':
                 config.filename = optarg;
                 break;
@@ -165,7 +158,6 @@ bool ConfigManager::parseArguments(int argc, char* argv[], int* exitCode) {
                 config.silentMode = true;
                 break;
             case 'C':
-                config.enableDatabase = true;  // 清理功能需要启用数据库
                 if (!parseOptionalDays(optarg, "Cleanup", config.cleanupDays,
                                        ConfigDefaults::DEFAULT_CLEANUP_DAYS)) {
                     return failWithError();
@@ -173,12 +165,8 @@ bool ConfigManager::parseArguments(int argc, char* argv[], int* exitCode) {
                 break;
             case 'c':
                 config.configFilePath = optarg;
-                config.loadConfigFile = true;
                 // 重新加载配置文件
                 loadConfigFile();
-                break;
-            case 'N':
-                config.loadConfigFile = false;
                 break;
             case 'S':
                 // 保存配置文件；optional_argument 不吃空格分隔路径，这里手动消费
@@ -220,17 +208,13 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "Options (short only):");
     std::println(std::cout, "  -h\t\tShow this help message");
     std::println(std::cout, "  -v\t\tShow version information");
-    std::println(std::cout, "  -d <connstr>\tEnable database logging and specify database path");
     std::println(std::cout, "  -f <file>\tSpecify input file with hosts (default: ip.txt)");
-    std::println(std::cout, "  -q <ip>\tQuery statistics for a specific IP address (requires -d)");
-    std::println(std::cout, "  -a [n]\t\tQuery active alerts (requires -d, n: days, default: all)");
-    std::println(std::cout,
-                 "  -r [n]\t\tQuery recovery records (requires -d, n: days, default: all)");
-    std::println(std::cout,
-                 "  -C [n]\t\tClean up data older than n days (requires -d, default: 30)");
+    std::println(std::cout, "  -q <ip>\tQuery statistics for a specific IP address");
+    std::println(std::cout, "  -a [n]\t\tQuery active alerts (n: days, default: all)");
+    std::println(std::cout, "  -r [n]\t\tQuery recovery records (n: days, default: all)");
+    std::println(std::cout, "  -C [n]\t\tClean up data older than n days (default: 30)");
     std::println(std::cout, "  -s\t\tSilent mode, suppress output");
     std::println(std::cout, "  -c <path>\tLoad configuration from specified file");
-    std::println(std::cout, "  -N\t\tDo not load configuration file");
     std::println(std::cout, "  -S [path]\tSave current configuration to file");
     std::println(std::cout, "");
     std::println(std::cout, "Note: -a/-r/-C days attach directly (e.g. -a7).");
@@ -243,8 +227,11 @@ void ConfigManager::printUsage(const char* programName) {
                  "run)");
     std::println(std::cout, "");
     std::println(std::cout,
-                 "Default behavior: If no file specified and database enabled, read hosts from "
-                 "database. Otherwise, read from ip.txt.");
+                 "Database is configured only via database_path in the config file; -q/-a/-r/-C");
+    std::println(std::cout, "  and host loading from DB require it.");
+    std::println(std::cout,
+                 "Default behavior: If no file specified and database_path set, read hosts from ");
+    std::println(std::cout, "  database. Otherwise, read from ip.txt.");
     std::println(std::cout, "Default filename: ip.txt");
     std::println(std::cout,
                  "Default behavior: Show all hosts with status (IP, hostname, status, delay)");

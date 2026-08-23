@@ -12,18 +12,17 @@ class ConfigManager {
    public:
     struct Config {
         std::string filename     = "";
-        bool enableDatabase      = false;
         std::string databasePath = "host=localhost user=postgres dbname=mping_pgtest";
-        bool databasePathSet     = false;  // database_path 来自 -d 或配置文件（区分默认值）
-        bool silentMode          = false;
-        std::string queryIP      = "";
-        int cleanupDays          = -1;  // -1表示不执行清理
+        // database_path 仅来自配置文件；置位即启用数据库（含单次运行）
+        bool databasePathSet = false;
+        bool silentMode      = false;
+        std::string queryIP  = "";
+        int cleanupDays      = -1;  // -1表示不执行清理
         int queryAlerts = -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
         int checkIntervalSeconds = 0;  // 持续检查模式：>0 = 每轮间隔秒数（0 = 单次运行）
         int queryRecoveryRecords =
             -1;  // -1=不查询, >=0=查询指定天数, QUERY_MODE_ENABLED_NO_DAYS=查询所有
-        bool loadConfigFile        = true;  // 是否加载配置文件
-        std::string configFilePath = "";    // 指定的配置文件路径
+        std::string configFilePath = "";  // 指定的配置文件路径（-c）
     };
 
    private:
@@ -37,7 +36,7 @@ class ConfigManager {
     void applyConfigFileSettings();
 
    public:
-    ConfigManager(bool loadConfig = true);
+    ConfigManager();
 
     // 解析命令行参数；返回 false 时程序应退出，exitCode 非空则写入建议退出码
     // （0 = 正常完成如 -h/-v/-S，1 = 参数错误）

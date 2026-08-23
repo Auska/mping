@@ -73,9 +73,9 @@ TEST_CASE("QueryIPCommand executes successfully", "[commands][query][db]") {
     std::string connstr = createPopulatedDatabase();
 
     ConfigManager::Config cfg;
-    cfg.enableDatabase = true;
-    cfg.databasePath   = connstr;
-    cfg.queryIP        = "192.168.1.1";
+    cfg.databasePathSet = true;
+    cfg.databasePath    = connstr;
+    cfg.queryIP         = "192.168.1.1";
 
     SECTION("Returns 0 for existing host") {
         QueryIPCommand cmd(cfg);
@@ -100,9 +100,9 @@ TEST_CASE("CleanupCommand executes successfully", "[commands][cleanup][db]") {
     std::string connstr = createPopulatedDatabase();
 
     ConfigManager::Config cfg;
-    cfg.enableDatabase = true;
-    cfg.databasePath   = connstr;
-    cfg.cleanupDays    = 365;  // 清理一年前的数据（应该无影响）
+    cfg.databasePathSet = true;
+    cfg.databasePath    = connstr;
+    cfg.cleanupDays     = 365;  // 清理一年前的数据（应该无影响）
 
     SECTION("Returns 0") {
         CleanupCommand cmd(cfg);
@@ -132,8 +132,8 @@ TEST_CASE("QueryAlertsCommand executes successfully", "[commands][alerts][db]") 
     std::string connstr = createPopulatedDatabase();
 
     ConfigManager::Config cfg;
-    cfg.enableDatabase = true;
-    cfg.databasePath   = connstr;
+    cfg.databasePathSet = true;
+    cfg.databasePath    = connstr;
 
     SECTION("Returns 0 with alerts present") {
         cfg.queryAlerts = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
@@ -166,8 +166,8 @@ TEST_CASE("QueryRecoveryCommand executes successfully", "[commands][recovery][db
     }
 
     ConfigManager::Config cfg;
-    cfg.enableDatabase = true;
-    cfg.databasePath   = connstr;
+    cfg.databasePathSet = true;
+    cfg.databasePath    = connstr;
 
     SECTION("Returns 0 with recovery records") {
         cfg.queryRecoveryRecords = ConfigDefaults::QUERY_MODE_ENABLED_NO_DAYS;
@@ -261,10 +261,10 @@ TEST_CASE("PingCommand with database enabled", "[commands][ping][db]") {
     file.close();
 
     ConfigManager::Config cfg;
-    cfg.filename       = testFile;
-    cfg.enableDatabase = true;
-    cfg.databasePath   = testPgConnstr();
-    cfg.silentMode     = true;
+    cfg.filename        = testFile;
+    cfg.databasePathSet = true;
+    cfg.databasePath    = testPgConnstr();
+    cfg.silentMode      = true;
     PingCommand cmd(cfg);
     REQUIRE(cmd.execute() == 0);
 
@@ -326,10 +326,10 @@ TEST_CASE("PingCommand alert lifecycle", "[commands][ping][alerts][db]") {
     // 第一次运行：127.0.0.1 可达，不应产生告警
     {
         ConfigManager::Config cfg;
-        cfg.filename       = testFile;
-        cfg.enableDatabase = true;
-        cfg.databasePath   = testPgConnstr();
-        cfg.silentMode     = true;
+        cfg.filename        = testFile;
+        cfg.databasePathSet = true;
+        cfg.databasePath    = testPgConnstr();
+        cfg.silentMode      = true;
         PingCommand cmd(cfg);
         REQUIRE(cmd.execute() == 0);
     }
