@@ -1,0 +1,15 @@
+# mping configuration file (INI format, copy to ~/.config/mping/config.json)
+# Keys outside [general] / unknown keys are ignored.
+
+[general]
+# PostgreSQL connection string (libpq); requires -d on the command line to enable
+database_path = "host=localhost user=myuser password=mypass dbname=mping"
+
+# Silent mode: suppress output
+silent = false
+
+# Cleanup: delete data older than N days (default: 30)
+cleanup_days = 30
+
+# Continuous check mode: seconds between rounds; 0 or absent = single run
+check_interval = 60
