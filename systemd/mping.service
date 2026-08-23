@@ -1,0 +1,38 @@
+# mping continuous check service (example)
+#
+# Install:
+#   sudo useradd -r -s /usr/sbin/nologin mping
+#   sudo cp systemd/mping.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mping
+#   journalctl -u mping -f
+#
+# Requirements:
+#   1. /usr/local/etc/mping/config.ini with check_interval > 0 (continuous mode);
+#      database_path enables DB logging (hosts from DB, persistence, cleanup).
+#   2. mping opens raw ICMP sockets, so the service user needs CAP_NET_RAW.
+#      Alternative: run as root, or setcap cap_net_raw+ep on the binary and drop
+#      the AmbientCapabilities line.
+
+[Unit]
+Description=mping multi-host connectivity checker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mping
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+ExecStart=/usr/local/bin/mping -c /usr/local/etc/mping/config.ini
+# PingCommand aborts on round failure by design (return 1); systemd restarts it.
+Restart=on-failure
+RestartSec=30
+# Guard against crash-loop from a broken config
+StartLimitIntervalSec=300
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
