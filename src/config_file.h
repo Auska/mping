@@ -55,7 +55,7 @@ class ConfigFile {
     // 获取配置文件路径
     const std::string& getFilePath() const noexcept;
 
-    // 获取默认配置文件路径（$HOME/.config/mping/config.json，HOME 未设置时返回空串）
+    // 获取默认配置文件路径（$HOME/.config/mping/config.ini，HOME 未设置时返回空串）
     static std::string getDefaultConfigPath();
 };
 

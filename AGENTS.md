@@ -63,7 +63,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
 
 ```
 解析命令行参数（ConfigManager）
-  → 加载配置文件（ConfigFile，默认 $HOME/.config/mping/config.json）
+  → 加载配置文件（ConfigFile，默认 $HOME/.config/mping/config.ini）
   → 命令行选项覆盖配置文件设置
   ┌── [queryIP 非空] → 创建 QueryIPCommand → 查询统计 → 结束
   ├── [cleanupDays >= 0] → 创建 CleanupCommand → 清理数据 → 结束
@@ -167,7 +167,7 @@ for f in src/*.cpp src/*.h tests/*.cpp; do clang-format -style=file "$f" | diff 
 - 线程池优化的并发实现（默认最大并发数 50）
 - 时区处理和时间戳记录功能（所有写入数据库的时间都使用 UTC 时间）
 - 支持通过 `cmake --install` 安装到系统
-- **配置文件支持**：INI 格式配置文件（默认路径 $HOME/.config/mping/config.json）
+- **配置文件支持**：INI 格式配置文件（默认路径 $HOME/.config/mping/config.ini）
   - 自动从默认路径加载配置
   - 支持命令行选项覆盖配置文件设置
   - 支持保存当前配置到文件
@@ -234,7 +234,7 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 - `-s`: 静默模式，抑制输出
 - `-c <path>`: 从指定路径加载配置文件
 - `-N`: 不加载配置文件
-- `-S [path]`: 保存当前配置到文件（默认：`$HOME/.config/mping/config.json`）
+- `-S [path]`: 保存当前配置到文件（默认：`$HOME/.config/mping/config.ini`）
 
 > **注意**：`-d` 参数必须是 PostgreSQL 连接字符串（libpq 格式），如 `host=localhost user=myuser dbname=mydb`。
 
@@ -252,7 +252,7 @@ target_link_libraries(mping PRIVATE PostgreSQL::PostgreSQL)
 
 ## 配置文件
 
-mping 支持配置文件（INI 格式），默认路径为 `$HOME/.config/mping/config.json`。
+mping 支持配置文件（INI 格式），默认路径为 `$HOME/.config/mping/config.ini`。
 
 ### 配置文件格式
 
@@ -282,7 +282,7 @@ check_interval = 60
 使用 `-S` 选项保存当前配置：
 
 ```bash
-# 保存到默认路径（$HOME/.config/mping/config.json）
+# 保存到默认路径（$HOME/.config/mping/config.ini）
 mping -S
 
 # 保存到指定路径

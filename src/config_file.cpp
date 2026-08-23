@@ -218,5 +218,5 @@ std::string ConfigFile::getDefaultConfigPath() {
     if (home == nullptr || home[0] == '\0') {
         return "";
     }
-    return std::string(home) + "/.config/mping/config.json";
+    return std::string(home) + "/.config/mping/config.ini";
 }

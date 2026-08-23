@@ -20,7 +20,7 @@ The project follows a command-pattern architecture with modular design:
 - Database logging of ping results (PostgreSQL)
 - Query statistics for specific IP addresses
 - Alert tracking with automatic recovery recording
-- Config file support (INI format, default: `~/.config/mping/config.json`)
+- Config file support (INI format, default: `~/.config/mping/config.ini`)
 - Continuous check mode with configurable interval (via `check_interval` in config file)
 - Two-round ping strategy (1 fast packet, retry with 5 packets to reduce false positives)
 - Pre-alert confirmation: first-time failures are retried 3 times before an alert is raised (avoids false alerts from transient failures)
@@ -44,7 +44,7 @@ The project follows a command-pattern architecture with modular design:
 - `-s`: Silent mode, suppress output
 - `-c <path>`: Load configuration from specified file
 - `-N`: Do not load configuration file
-- `-S [path]`: Save current configuration to file (default: `$HOME/.config/mping/config.json`)
+- `-S [path]`: Save current configuration to file (default: `$HOME/.config/mping/config.ini`)
 
 ### Default behavior
 

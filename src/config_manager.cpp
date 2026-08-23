@@ -235,7 +235,7 @@ void ConfigManager::printUsage(const char* programName) {
     std::println(std::cout, "Note: -a/-r/-C days attach directly (e.g. -a7).");
     std::println(std::cout, "");
     std::println(std::cout, "Configuration File:");
-    std::println(std::cout, "  Default path: $HOME/.config/mping/config.json");
+    std::println(std::cout, "  Default path: $HOME/.config/mping/config.ini");
     std::println(std::cout, "  [general] keys: database_path, silent, cleanup_days,");
     std::println(std::cout,
                  "  check_interval (continuous mode: seconds between rounds, 0/absent = single "

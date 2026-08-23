@@ -67,7 +67,7 @@ TEST_CASE("ConfigFile basic operations", "[config_file]") {
 TEST_CASE("ConfigFile default config path", "[config_file]") {
     const char* home = std::getenv("HOME");
     REQUIRE(home != nullptr);
-    REQUIRE(ConfigFile::getDefaultConfigPath() == std::string(home) + "/.config/mping/config.json");
+    REQUIRE(ConfigFile::getDefaultConfigPath() == std::string(home) + "/.config/mping/config.ini");
 }
 
 TEST_CASE("ConfigFile parsing", "[config_file]") {
