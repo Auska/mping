@@ -13,7 +13,9 @@ std::unique_ptr<Command> dispatchCommand(const ConfigManager::Config& config) {
     if (!config.queryIP.empty()) {
         return std::make_unique<QueryIPCommand>(config);
     }
-    if (config.cleanupDays >= 0) {
+    // cleanup 作为一次性命令仅在非持续模式下生效；持续模式（check_interval > 0）下
+    // cleanup_days 由 PingCommand 循环内每轮执行，避免清理后直接退出
+    if (config.cleanupDays >= 0 && config.checkIntervalSeconds <= 0) {
         return std::make_unique<CleanupCommand>(config);
     }
     // queryAlerts/queryRecoveryRecords: -1 = disabled (default), -2 = enabled without days,

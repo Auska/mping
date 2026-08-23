@@ -66,7 +66,7 @@ mping 是一个命令行工具，用于同时检查多个主机的连接性。�
   → 加载配置文件（ConfigFile，默认 $HOME/.config/mping/config.ini）
   → 命令行选项覆盖配置文件设置
   ┌── [queryIP 非空] → 创建 QueryIPCommand → 查询统计 → 结束
-  ├── [cleanupDays >= 0] → 创建 CleanupCommand → 清理数据 → 结束
+  ├── [cleanupDays >= 0 且非持续模式] → 创建 CleanupCommand → 清理数据 → 结束（持续模式下每轮内执行清理，不退出）
   ├── [queryAlerts 启用] → 创建 QueryAlertsCommand → 查询告警 → 结束
   ├── [queryRecoveryRecords 启用] → 创建 QueryRecoveryCommand → 查询恢复 → 结束
   └── [默认] → 创建 PingCommand

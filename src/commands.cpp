@@ -268,6 +268,10 @@ int PingCommand::execute() {
             if (!persistResults(allResults, db, alertIPs)) {
                 return 1;
             }
+            // 配置了 cleanup_days 时，持续模式每轮执行全量清理（alerts/recovery/ping_results 同 -C）
+            if (config.cleanupDays >= 0) {
+                db->cleanupOldData(config.cleanupDays);
+            }
         }
 
         // 5. 输出结果（静默模式跳过）
